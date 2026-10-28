@@ -108,6 +108,7 @@ export function buildSlots(
   count: number,
   entry: WorldEdge,
   radii?: readonly number[],
+  startIndex = 0,
 ): ProcessSlot[] {
   const radiusAt = (index: number) => {
     const radius = radii?.[index];
@@ -125,14 +126,15 @@ export function buildSlots(
   );
 
   for (let index = 0; index < count; index += 1) {
+    const wave = startIndex + index;
     const polygon = localPentagon(rotation, radius).map((point) => add(point, center));
     const incoming = edgeOf(polygon, SLOT_LAYOUT.inputEdge);
     const outgoing = edgeOf(
       polygon,
-      SLOT_LAYOUT.outputEdges[index % SLOT_LAYOUT.outputEdges.length],
+      SLOT_LAYOUT.outputEdges[wave % SLOT_LAYOUT.outputEdges.length],
     );
     slots.push({
-      index,
+      index: wave,
       x: center.x,
       y: center.y,
       rotation,

@@ -62,22 +62,6 @@ function endpointRadius(): number {
   return SLOT_LAYOUT.radius * ACTIVITY_TO_PHASE;
 }
 
-function slotRadii(
-  chain: ProcessToken[],
-  hole: number | null,
-  count: number,
-): number[] {
-  const endRadius = endpointRadius();
-  const endIndex = hole === null ? chain.length : chain.length + 1;
-  return Array.from({ length: count }, (_, index) => {
-    if (index === endIndex) return endRadius;
-    let chainIndex = index;
-    if (hole !== null && index === hole) return SLOT_LAYOUT.radius;
-    if (hole !== null && index > hole) chainIndex = index - 1;
-    return radiusFor(chain[chainIndex]);
-  });
-}
-
 function radiusFor(token: ProcessToken | undefined): number {
   if (token?.type === "activity") return SLOT_LAYOUT.radius * ACTIVITY_TO_PHASE;
   return SLOT_LAYOUT.radius;
@@ -135,28 +119,91 @@ function placeOnEdge(
   };
 }
 
-/**
- * A checkpoint is turned so its left side meets the previous token and its
- * right side meets the next one. The two side midpoints sit on those joints.
- */
-function placeCheckpoint(token: ProcessToken, slot: ProcessSlot): PlacedToken {
-  const geometry = geometryFor(token);
-  const right = geometry.output;
-  if (!right) throw new Error(`Checkpoint ${token.id} has no right side`);
-  const axisX = right.x - geometry.anchor.x;
-  const axisY = right.y - geometry.anchor.y;
-  const axis = Math.hypot(axisX, axisY) || 1;
-  const worldX = slot.exit.x - slot.entry.x;
-  const worldY = slot.exit.y - slot.entry.y;
-  const span = Math.hypot(worldX, worldY) || 1;
+function exitEdge(slot: ProcessSlot): WorldEdge {
   return {
-    token,
-    x: slot.entry.x,
-    y: slot.entry.y,
-    heading: Math.atan2(worldY, worldX) - Math.atan2(axisY, axisX),
-    scale: span / axis,
-    outputX: slot.exit.x,
-    outputY: slot.exit.y,
+    a: slot.exitEdge[0],
+    b: slot.exitEdge[1],
+    mid: slot.exit,
+    normal: edgeOutward(
+      slot.polygon,
+      SLOT_LAYOUT.outputEdges[slot.index % SLOT_LAYOUT.outputEdges.length],
+    ),
+  };
+}
+
+/** The outline edge whose midpoint is the checkpoint's right side. */
+function rightSide(token: ProcessToken): { a: Point; b: Point; normal: Point } {
+  const geometry = geometryFor(token);
+  const outline = geometry.outline;
+  const output = geometry.output;
+  if (!outline || !output) throw new Error(`Checkpoint ${token.id} has no right side`);
+  for (let index = 0; index < outline.length; index += 1) {
+    const a = outline[index];
+    const b = outline[(index + 1) % outline.length];
+    const mid = midpoint(a, b);
+    if (Math.hypot(mid.x - output.x, mid.y - output.y) < 1) {
+      return { a, b, normal: edgeOutward(outline, index) };
+    }
+  }
+  throw new Error(`Checkpoint ${token.id} has no right side`);
+}
+
+function worldPoint(placed: PlacedToken, point: Point): Point {
+  const geometry = geometryFor(placed.token);
+  return imageToWorld(point, geometry.anchor, { x: placed.x, y: placed.y }, placed.heading, placed.scale);
+}
+
+function worldDirection(placed: PlacedToken, direction: Point): Point {
+  const moved = worldPoint(placed, {
+    x: geometryFor(placed.token).anchor.x + direction.x,
+    y: geometryFor(placed.token).anchor.y + direction.y,
+  });
+  const dx = moved.x - placed.x;
+  const dy = moved.y - placed.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return { x: dx / length, y: dy / length };
+}
+
+/**
+ * Turn the checkpoint so its left side lies on the previous token and its
+ * right side is the edge the next token meets.
+ */
+function placeCheckpoint(
+  token: ProcessToken,
+  incoming: WorldEdge,
+): { placed: PlacedToken; outgoing: WorldEdge; slot: ProcessSlot } {
+  const left = pentagonEdge(token);
+  const seat = placeOnEdge(token, left.a, left.b, left.normal, incoming, true);
+  const right = rightSide(token);
+  const a = worldPoint(seat, right.a);
+  const b = worldPoint(seat, right.b);
+  const mid = midpoint(a, b);
+  const placed = { ...seat, outputX: mid.x, outputY: mid.y };
+  const outgoing: WorldEdge = {
+    a,
+    b,
+    mid,
+    normal: worldDirection(placed, right.normal),
+  };
+  const polygon = worldOutline(placed);
+  const center = polygon.reduce(
+    (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+    { x: 0, y: 0 },
+  );
+  return {
+    placed,
+    outgoing,
+    slot: {
+      index: 0,
+      x: center.x / polygon.length,
+      y: center.y / polygon.length,
+      rotation: placed.heading,
+      entry: incoming.mid,
+      exit: mid,
+      entryEdge: [incoming.a, incoming.b],
+      exitEdge: [a, b],
+      polygon,
+    },
   };
 }
 
@@ -212,9 +259,16 @@ export function layoutProcess(
     openSlot !== null && openSlot >= 0 && openSlot < chain.length
       ? openSlot
       : null;
-  const slotCount = slotRunLength(chain.length + (hole === null ? 0 : 1));
-  const slots = buildSlots(slotCount, exit, slotRadii(chain, hole, slotCount));
   const placed: PlacedToken[] = [];
+  const slots: ProcessSlot[] = [];
+  let edge = exit;
+
+  function pushPentagon(radius: number): ProcessSlot {
+    const slot = buildSlots(1, edge, [radius], slots.length)[0];
+    slots.push(slot);
+    edge = exitEdge(slot);
+    return slot;
+  }
 
   if (start) {
     const [a, b] = START_EXIT_EDGE;
@@ -229,12 +283,24 @@ export function layoutProcess(
     });
   }
 
-  chain.forEach((token, index) => {
-    const slot = slots[hole !== null && index >= hole ? index + 1 : index];
-    if (token.type === "checkpoint") {
-      placed.push(placeCheckpoint(token, slot));
-      return;
+  const occupiedSlots = chain.length + (hole === null ? 0 : 1);
+  let chainIndex = 0;
+  for (let slotIndex = 0; slotIndex < occupiedSlots; slotIndex += 1) {
+    if (hole !== null && slotIndex === hole) {
+      pushPentagon(SLOT_LAYOUT.radius);
+      continue;
     }
+    const token = chain[chainIndex];
+    chainIndex += 1;
+    if (token.type === "checkpoint") {
+      const bridge = placeCheckpoint(token, edge);
+      bridge.slot.index = slots.length;
+      slots.push(bridge.slot);
+      placed.push(bridge.placed);
+      edge = bridge.outgoing;
+      continue;
+    }
+    const slot = pushPentagon(radiusFor(token));
     const image = pentagonEdge(token);
     const world: WorldEdge = {
       a: slot.entryEdge[0],
@@ -242,14 +308,7 @@ export function layoutProcess(
       mid: slot.entry,
       normal: edgeOutward(slot.polygon, SLOT_LAYOUT.inputEdge),
     };
-    const seat = placeOnEdge(
-      token,
-      image.a,
-      image.b,
-      image.normal,
-      world,
-      true,
-    );
+    const seat = placeOnEdge(token, image.a, image.b, image.normal, world, true);
     const geometry = geometryFor(token);
     const tip = geometry.output ?? geometry.anchor;
     const output = imageToWorld(
@@ -260,7 +319,13 @@ export function layoutProcess(
       seat.scale,
     );
     placed.push({ ...seat, outputX: output.x, outputY: output.y });
-  });
+  }
+
+  const slotCount = slotRunLength(occupiedSlots);
+  while (slots.length < slotCount) {
+    const endIndex = hole === null ? chain.length : chain.length + 1;
+    pushPentagon(slots.length === endIndex ? endpointRadius() : SLOT_LAYOUT.radius);
+  }
 
   const endSeat = slots[endSeatIndex(chain, hole)];
   const includeEnd = Boolean(endSeat) && (seatedInStart || chain.length > 0);

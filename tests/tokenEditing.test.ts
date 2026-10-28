@@ -76,7 +76,7 @@ test("remove drops one token and leaves a checkpoint in its own slot", () => {
   );
 });
 
-test("a checkpoint fills the next process slot", () => {
+test("a checkpoint joins the previous token on the left and the next on the right", () => {
   const checkpoint: ProcessToken = {
     id: "check",
     type: "checkpoint",
@@ -86,14 +86,15 @@ test("a checkpoint fills the next process slot", () => {
     permanent: false,
     asset: "checkpunt@2x.png",
   };
-  const layout = layoutProcess(processWith(understand, checkpoint));
+  const layout = layoutProcess(processWith(understand, checkpoint, brainstorm));
   const placed = layout.placed.find((item) => item.token.id === "check");
+  const activity = layout.placed.find((item) => item.token.id === "brainstorm");
   const slot = layout.slots[0];
-  assert.equal(layout.occupied, 1);
-  assert.ok(placed && slot);
+  assert.equal(layout.occupied, 2);
+  assert.ok(placed && activity && slot);
   assert.ok(Math.hypot(placed.x - slot.entry.x, placed.y - slot.entry.y) < 1);
   assert.ok(placed.outputX !== null && placed.outputY !== null);
-  assert.ok(Math.hypot(placed.outputX - slot.exit.x, placed.outputY - slot.exit.y) < 1);
+  assert.ok(Math.hypot(activity.x - placed.outputX, activity.y - placed.outputY) < 1);
 });
 
 test("rotate keeps the slot and turns the artwork one pentagon step", () => {
