@@ -1,0 +1,120 @@
+.recommend-debug-toggle {
+  position: absolute;
+  z-index: 4;
+  top: 16px;
+  right: 16px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #ececec;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.08);
+}
+
+.recommend-debug-toggle[aria-pressed="true"] {
+  color: var(--groow-blue);
+}
+
+.recommend-debug {
+  position: absolute;
+  z-index: 8;
+  top: 16px;
+  right: 16px;
+  bottom: 72px;
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid #ececec;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
+  box-shadow: 0 16px 40px rgba(16, 24, 40, 0.12);
+}
+
+.recommend-debug__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 8px;
+}
+
+.recommend-debug__header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.recommend-debug__header button,
+.recommend-debug__facts {
+  font-size: 12px;
+}
+
+.recommend-debug__header button {
+  border: 0;
+  background: transparent;
+  color: var(--groow-blue);
+  cursor: pointer;
+}
+
+.recommend-debug__facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0 16px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.recommend-debug__facts div {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 8px;
+}
+
+.recommend-debug__facts dt {
+  color: #666;
+}
+
+.recommend-debug__facts dd {
+  margin: 0;
+}
+
+.recommend-debug__list {
+  margin: 0;
+  padding: 8px 16px 16px;
+  overflow: auto;
+  list-style: none;
+}
+
+.recommend-debug__list li {
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f3f3;
+}
+
+.recommend-debug__list p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.recommend-debug__title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recommend-debug__scores {
+  font-variant-numeric: tabular-nums;
+}
+
+.recommend-debug__links {
+  color: #555;
+}

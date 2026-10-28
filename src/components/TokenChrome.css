@@ -1,0 +1,66 @@
+.token-selection {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 4000px;
+  height: 4000px;
+  overflow: visible;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.token-toolbar-anchor {
+  position: absolute;
+  z-index: 6;
+  transform-origin: center bottom;
+  pointer-events: auto;
+}
+
+.token-toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 12px 18px 10px;
+  border-radius: 22px;
+  background: var(--groow-blue);
+  box-shadow: 0 8px 18px rgba(8, 46, 239, 0.22);
+  animation: token-toolbar-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.token-toolbar__button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 52px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.token-toolbar__button:hover,
+.token-toolbar__button:focus-visible {
+  color: #fff;
+}
+
+.token-toolbar__button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+@keyframes token-toolbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

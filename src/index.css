@@ -1,0 +1,52 @@
+:root {
+  --groow-blue: #082eef;
+  --header-bg: #f7f7f7;
+  --canvas-bg: #ffffff;
+  --ink: #1c1c1c;
+  --dot: #a3a3a6;
+  --button-face: #fdfdfd;
+  --header-height: 72px;
+  --font: "Brandon Grotesque", ui-sans-serif, system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--canvas-bg);
+  font-family: var(--font);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--canvas-bg);
+}
+
+button,
+input {
+  font-family: inherit;
+}
+
+button {
+  padding: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}

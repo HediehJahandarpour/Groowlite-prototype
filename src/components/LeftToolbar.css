@@ -1,0 +1,47 @@
+.toolbar {
+  position: absolute;
+  z-index: 2;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 999px;
+  background: var(--groow-blue);
+}
+
+.toolbar__button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: var(--button-face);
+  color: var(--groow-blue);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.toolbar__button:hover {
+  background: #f5f5f5;
+}
+
+.toolbar__button:active {
+  transform: scale(0.96);
+}
+
+.toolbar__button[aria-pressed="true"] {
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(16, 24, 40, 0.16);
+}
+
+.toolbar__button:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}

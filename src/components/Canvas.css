@@ -1,0 +1,37 @@
+.canvas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--canvas-bg);
+  touch-action: none;
+  cursor: default;
+  user-select: none;
+}
+
+.canvas--pan-ready {
+  cursor: grab;
+}
+
+.canvas--panning,
+.canvas--panning.canvas--pan-ready {
+  cursor: grabbing;
+}
+
+.canvas__grid,
+.canvas__world {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.canvas__world {
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.canvas__tokens {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}

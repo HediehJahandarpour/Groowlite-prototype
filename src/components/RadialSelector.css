@@ -1,0 +1,74 @@
+.radial-selector {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.radial-selector__gradient,
+.radial-selector__category,
+.radial-selector__token {
+  position: absolute;
+  display: block;
+}
+
+.radial-selector__gradient {
+  transform: translate(-50%, -50%) scale(0.45);
+  transform-origin: 16% 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 300ms ease;
+}
+
+.radial-selector__gradient--open {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.radial-selector__token img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.radial-selector__token {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform: translate(-50%, -50%) scale(0.84);
+  opacity: 0;
+  cursor: pointer;
+  pointer-events: none;
+  transition:
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 260ms ease,
+    filter 200ms ease;
+}
+
+.radial-selector--open .radial-selector__token {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: calc(var(--i) * 42ms);
+}
+
+.radial-selector--open .radial-selector__token:hover,
+.radial-selector--open .radial-selector__token:focus-visible {
+  transform: translate(-50%, -50%) scale(1.08);
+  z-index: 2;
+  filter: drop-shadow(0 10px 14px rgba(16, 24, 40, 0.16));
+}
+
+.radial-selector__token:focus-visible {
+  outline: 3px solid var(--groow-blue);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radial-selector__gradient,
+  .radial-selector__token {
+    transition: none;
+  }
+}
