@@ -36,6 +36,29 @@ export function spanForToken(tokens: readonly ProcessToken[], id: string): Token
   return { start: index, count: group.length, ids: group.map((item) => item.id) };
 }
 
+/**
+ * A phase can only land on a phase boundary, so it does not split another
+ * phase's group. Activities and checkpoints may land on any middle index.
+ * `destinationIndex` is counted after the moving span has been removed.
+ */
+export function isValidDropIndex(
+  tokens: readonly ProcessToken[],
+  sourceIndex: number,
+  count: number,
+  destinationIndex: number,
+): boolean {
+  const middles = middleTokens(tokens);
+  const moving = middles[sourceIndex];
+  if (!moving || count < 1 || sourceIndex + count > middles.length) return false;
+  const remaining = middles.filter(
+    (_, index) => index < sourceIndex || index >= sourceIndex + count,
+  );
+  if (destinationIndex < 0 || destinationIndex > remaining.length) return false;
+  if (moving.type !== "phase") return true;
+  if (destinationIndex === remaining.length) return true;
+  return remaining[destinationIndex]?.type === "phase";
+}
+
 function renumber(start: ProcessToken, middles: ProcessToken[], end: ProcessToken): ProcessToken[] {
   return [
     { ...start, order: 0 },

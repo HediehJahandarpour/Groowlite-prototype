@@ -63,32 +63,6 @@ type InsertionMenuProps = {
   suspended?: boolean;
 };
 
-const BAR_OPTIONS: MenuCategory[] = ["activity", "phase"];
-
-const SEAM_SIZE = 50;
-const GLYPH_WIDTH: Record<MenuCategory, number> = {
-  activity: 34,
-  phase: 40,
-  checkpoint: 26,
-};
-
-/** Collapsed circle, then the glyphs growing out to the right. */
-function seamOpenWidth(options: MenuCategory[]) {
-  const icons = options.reduce((sum, id) => sum + GLYPH_WIDTH[id], 0);
-  const gaps = Math.max(0, options.length - 1) * 10;
-  return SEAM_SIZE + 4 + icons + gaps + 12;
-}
-
-const BAR_LABEL: Record<MenuCategory, string> = {
-  activity: "Activities",
-  phase: "Phases",
-  checkpoint: "Checkpoint",
-};
-
-/** Point-up pentagon. The face sits inside the white stroke used for Phases. */
-const PENTAGON_OUTLINE = pentagonPoints(48);
-const PENTAGON_FACE = pentagonPoints(39);
-
 /** Temporary list, in world pixels, to the right of the blue pentagon. */
 const PICKER_OFFSET: Record<MenuCategory, Point> = {
   phase: { x: 130, y: 52 },
@@ -132,9 +106,7 @@ export function InsertionMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const seamRef = useRef<HTMLDivElement>(null);
   const [seamHost, setSeamHost] = useState<HTMLElement | null>(null);
-  const [imageStamp, setImageStamp] = useState(() => Date.now());
   const [explorerMode, setExplorerMode] = useState<MenuCategory | null>(null);
-  const [pinned, setPinned] = useState<number | null>(null);
   const start = placed.find((item) => item.token.type === "start");
   const phaseOpen = category === "phase";
   const activityOpen = category === "activity";
@@ -161,10 +133,6 @@ export function InsertionMenu({
     return () => window.clearTimeout(id);
   }, [category]);
 
-  useEffect(() => {
-    if (open) setImageStamp(Date.now());
-  }, [open]);
-
   useLayoutEffect(() => {
     const node = viewportRef.current ?? document.querySelector(".canvas");
     if (node instanceof HTMLElement) {
@@ -173,10 +141,6 @@ export function InsertionMenu({
   });
 
   const dismissible = open || placeholderOpen;
-
-  useEffect(() => {
-    if (!placeholderOpen && !open) setPinned(null);
-  }, [placeholderOpen, open]);
 
   useEffect(() => {
     if (!dismissible) return;
@@ -273,10 +237,6 @@ export function InsertionMenu({
           ? plusPoint(index, origin, slots, phaseInStart)
           : seamPoint(index, origin, slots, phaseInStart);
       const screenPoint = worldToScreen(view, point.x, point.y);
-      const options =
-        !phaseInStart && index <= 0
-          ? (["phase"] as MenuCategory[])
-          : BAR_OPTIONS;
       const beforePhase = chain[index]?.type === "phase";
       const resting =
         !beforePhase &&
@@ -296,13 +256,9 @@ export function InsertionMenu({
               "insertion-seam",
               holding ? "insertion-seam--holding" : "",
               resting ? "insertion-seam--visible" : "",
-              pinned === index ? "insertion-seam--open" : "",
             ]
               .filter(Boolean)
               .join(" ")}
-            style={{
-              ["--open-width" as string]: `${seamOpenWidth(options)}px`,
-            }}
             onPointerEnter={() => {
               if (document.documentElement.classList.contains("is-reordering")) return;
               onActivate(index);
@@ -311,31 +267,10 @@ export function InsertionMenu({
             <button
               type="button"
               className="insertion-seam__plus"
-              aria-label={`Add a token at position ${index + 1}`}
-              aria-expanded={pinned === index}
-              onClick={() => {
-                onActivate(index);
-                setPinned((current) => (current === index ? null : index));
-              }}
+              aria-label={`Add a phase at position ${index + 1}`}
+              aria-expanded={holding}
+              onClick={() => chooseAt(index, "phase")}
             />
-            <span
-              className="insertion-seam__options"
-              role="toolbar"
-              aria-label="Add a token"
-            >
-              {options.map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  className={`insertion-seam__option insertion-seam__option--${id}`}
-                  aria-label={BAR_LABEL[id]}
-                  tabIndex={holding ? -1 : 0}
-                  onClick={() => chooseAt(index, id)}
-                >
-                  <BarGlyph category={id} stamp={imageStamp} />
-                </button>
-              ))}
-            </span>
           </div>
         </div>
       );
@@ -402,60 +337,6 @@ export function InsertionMenu({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function pentagonPoints(radius: number): string {
-  const cx = 50;
-  const cy = 50;
-  return Array.from({ length: 5 }, (_, index) => {
-    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / 5;
-    const x = cx + radius * Math.cos(angle);
-    const y = cy + radius * Math.sin(angle);
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
-  }).join(" ");
-}
-
-function BarGlyph({
-  category,
-  stamp,
-}: {
-  category: MenuCategory;
-  stamp: number;
-}) {
-  if (category === "checkpoint") {
-    return (
-      <img
-        className="insertion-seam__checkpoint"
-        src={`/tokens/checkpunt@2x.png?v=${stamp}`}
-        alt=""
-        draggable={false}
-      />
-    );
-  }
-
-  const phase = category === "phase";
-  return (
-    <span
-      className={phase ? "insertion-seam__phase" : "insertion-seam__activity"}
-    >
-      <svg viewBox="0 0 100 100" aria-hidden="true">
-        {phase ? <polygon points={PENTAGON_OUTLINE} fill="#ffffff" /> : null}
-        <polygon
-          points={phase ? PENTAGON_FACE : PENTAGON_OUTLINE}
-          fill="#efdec8"
-        />
-      </svg>
-      <span
-        className={
-          phase
-            ? "insertion-seam__label insertion-seam__label--phase"
-            : "insertion-seam__label"
-        }
-      >
-        {BAR_LABEL[category]}
-      </span>
-    </span>
   );
 }
 

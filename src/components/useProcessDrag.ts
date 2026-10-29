@@ -26,6 +26,8 @@ type Session = {
   origins: Record<string, DragPose>;
   startWorld: Point;
   baseTokens: ProcessToken[];
+  /** True when the settle animation should write the new order. */
+  settleCommit: boolean;
 };
 
 type Pending = {
@@ -89,6 +91,7 @@ export function useProcessDrag({
   const loopRef = useRef(0);
   const tweenRef = useRef<gsap.core.Tween | null>(null);
   const liftTweenRef = useRef<gsap.core.Tween | null>(null);
+  const settleTimerRef = useRef(0);
   const candidateRef = useRef<{ key: string; list: DropCandidate[] } | null>(null);
   const committingRef = useRef(false);
 
@@ -112,6 +115,8 @@ export function useProcessDrag({
     tweenRef.current = null;
     liftTweenRef.current?.kill();
     liftTweenRef.current = null;
+    window.clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = 0;
   }
 
   function clearDrag() {
@@ -247,13 +252,22 @@ export function useProcessDrag({
     try {
       to = restingPoses(preview, current.ids);
     } catch {
-      const settling = { ...current, phase: "settling" as const, activeIndex: commitIndex };
-      sessionRef.current = settling;
+      sessionRef.current = {
+        ...current,
+        phase: "settling",
+        activeIndex: commitIndex,
+        settleCommit: committing,
+      };
       finish(committing);
       return;
     }
     const from = posesNow(current);
-    const settling = { ...current, phase: "settling" as const, activeIndex: commitIndex };
+    const settling = {
+      ...current,
+      phase: "settling" as const,
+      activeIndex: commitIndex,
+      settleCommit: committing,
+    };
     sessionRef.current = settling;
     setSession(settling);
     setSettlePoses(from);
@@ -262,11 +276,13 @@ export function useProcessDrag({
       finish(committing);
       return;
     }
+    const durationMs = committing ? DRAG.snapMs : DRAG.cancelMs;
     const proxy = { t: 0 };
     tweenRef.current?.kill();
+    gsap.ticker.wake();
     tweenRef.current = gsap.to(proxy, {
       t: 1,
-      duration: (committing ? DRAG.snapMs : DRAG.cancelMs) / 1000,
+      duration: durationMs / 1000,
       ease: "power2.out",
       onUpdate: () => setSettlePoses(lerpPoses(from, to, proxy.t)),
       onComplete: () => {
@@ -275,6 +291,25 @@ export function useProcessDrag({
         finish(committing);
       },
     });
+    // If the ticker never advances, the token must not stay floating.
+    settleTimerRef.current = window.setTimeout(() => {
+      if (sessionRef.current?.phase !== "settling") return;
+      const tween = tweenRef.current;
+      tweenRef.current = null;
+      tween?.kill();
+      setSettlePoses(to);
+      finish(committing);
+    }, durationMs + 80);
+  }
+
+  function finishSettle() {
+    const current = sessionRef.current;
+    if (!current || current.phase !== "settling") return;
+    const commit = current.settleCommit;
+    const tween = tweenRef.current;
+    tweenRef.current = null;
+    tween?.kill();
+    finish(commit);
   }
 
   function startDrag(pending: Pending, clientX: number, clientY: number) {
@@ -304,6 +339,7 @@ export function useProcessDrag({
       origins,
       startWorld,
       baseTokens,
+      settleCommit: false,
     };
     pendingRef.current = null;
     pointerRef.current = { clientX, clientY };
@@ -337,8 +373,8 @@ export function useProcessDrag({
     loopRef.current = requestAnimationFrame(followFrame);
   }
 
-  const actionsRef = useRef({ startDrag, release });
-  actionsRef.current = { startDrag, release };
+  const actionsRef = useRef({ startDrag, release, finishSettle });
+  actionsRef.current = { startDrag, release, finishSettle };
 
   useEffect(() => {
     function onMove(event: PointerEvent) {
@@ -396,6 +432,7 @@ export function useProcessDrag({
       event.preventDefault();
       event.stopPropagation();
       if (drag?.phase === "dragging") actionsRef.current.release(drag.sourceIndex);
+      else if (drag?.phase === "settling") actionsRef.current.finishSettle();
       else if (!drag) pendingRef.current = null;
     }
 

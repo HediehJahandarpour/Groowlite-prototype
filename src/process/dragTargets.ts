@@ -3,7 +3,7 @@ import { worldToScreen } from "../canvas/view";
 import { DRAG } from "./dragConfig";
 import { poseCentered, type DragPose } from "./dragPose";
 import { layoutProcess, tokenWorldOutline, type ProcessLayout } from "./processLayout";
-import { middleTokens, moveProcessBlock } from "./reorderToken";
+import { isValidDropIndex, middleTokens, moveProcessBlock } from "./reorderToken";
 import { imageToWorld, SLOT_EDGE } from "./slotLayout";
 import { ACTIVITY_TO_PHASE, centroid, geometryFor } from "./tokenGeometry";
 import type { PlacedToken, Point, ProcessToken } from "./processTypes";
@@ -129,6 +129,7 @@ export function dropCandidates(
   if (remaining < 0) return [];
   const candidates: DropCandidate[] = [];
   for (let index = 0; index <= remaining; index += 1) {
+    if (!isValidDropIndex(tokens, sourceIndex, count, index)) continue;
     const preview = moveProcessBlock(tokens, sourceIndex, count, index);
     let layout: ProcessLayout;
     try {

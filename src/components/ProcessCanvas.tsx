@@ -116,7 +116,7 @@ export function ProcessCanvas({
     window.clearTimeout(hoverTimer.current);
     hoverTimer.current = window.setTimeout(() => {
       setHoveredId((current) => (current === id ? null : current));
-    }, 160);
+    }, 280);
   }
 
   const floaterIds = primaryId
@@ -277,7 +277,7 @@ function TokenGrip({
       tabIndex={-1}
       style={{
         left: (minX + maxX) / 2,
-        top: maxY + 6 / viewScale,
+        top: maxY + 12 / viewScale,
         transform: `translate(-50%, 0) scale(${1 / viewScale})`,
       }}
       onPointerDown={onPress}

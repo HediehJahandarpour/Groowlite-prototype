@@ -4,6 +4,7 @@ import { autoPanDelta, chooseDropIndex } from "../src/process/dragTargets";
 import { lerpPoses } from "../src/process/dragPose";
 import { layoutProcess } from "../src/process/processLayout";
 import {
+  isValidDropIndex,
   middleTokens,
   moveProcessBlock,
   moveProcessToken,
@@ -134,6 +135,17 @@ test("an activity moves alone and a checkpoint stays with its phase until grabbe
   assert.deepEqual(spanForToken(chain, "understand")?.ids, ["understand", "brainstorm", "check"]);
   const activityOnly = moveProcessToken(chain, 1, 3);
   assert.deepEqual(ids(activityOnly), ["start", "understand", "check", "design", "brainstorm", "end"]);
+});
+
+test("a phase can only drop on a phase boundary", () => {
+  const chain = processWith(understand, brainstorm, planning, design, research, checkpoint);
+  assert.equal(isValidDropIndex(chain, 0, 3, 0), true);
+  assert.equal(isValidDropIndex(chain, 0, 3, 3), true);
+  assert.equal(isValidDropIndex(chain, 0, 3, 1), false);
+  assert.equal(isValidDropIndex(chain, 0, 3, 2), false);
+  assert.equal(isValidDropIndex(chain, 1, 1, 0), true);
+  assert.equal(isValidDropIndex(chain, 1, 1, 4), true);
+  assert.equal(isValidDropIndex(chain, 5, 1, 2), true);
 });
 
 test("dropping on the original index does not copy the array", () => {

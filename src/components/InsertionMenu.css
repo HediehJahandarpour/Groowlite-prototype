@@ -6,7 +6,7 @@
 }
 
 .insertion-picker__option:focus-visible,
-.insertion-seam__option:focus-visible {
+.insertion-seam__plus:focus-visible {
   outline: 2px solid #ffffff;
   outline-offset: 2px;
 }
@@ -37,30 +37,20 @@
   height: 50px;
   border-radius: 999px;
   background: var(--groow-blue);
-  overflow: hidden;
   pointer-events: auto;
   opacity: 0;
-  transition:
-    width 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 120ms ease;
+  transition: opacity 120ms ease;
 }
 
 .insertion-seam:hover,
 .insertion-seam:focus-within,
-.insertion-seam--visible,
-.insertion-seam--open {
+.insertion-seam--visible {
   opacity: 1;
 }
 
-.insertion-seams:has(.insertion-seam:hover) .insertion-seam--visible:not(:hover):not(:focus-within),
-.insertion-seams:has(.insertion-seam--open) .insertion-seam--visible:not(.insertion-seam--open):not(:hover):not(:focus-within) {
+.insertion-seams:has(.insertion-seam:hover)
+  .insertion-seam--visible:not(:hover):not(:focus-within) {
   opacity: 0;
-}
-
-.insertion-seam:hover,
-.insertion-seam:focus-within,
-.insertion-seam--open {
-  width: var(--open-width);
 }
 
 .insertion-seam--holding,
@@ -101,85 +91,6 @@
 .insertion-seam__plus::after {
   width: 2.25px;
   height: 16px;
-}
-
-.insertion-seam__options {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-right: 12px;
-}
-
-.insertion-seam__option {
-  display: grid;
-  place-items: center;
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  pointer-events: auto;
-}
-
-.insertion-seam__option:hover {
-  transform: translateY(-0.5px);
-}
-
-.insertion-seam__option:active {
-  transform: scale(0.96);
-}
-
-.insertion-seam__activity,
-.insertion-seam__phase {
-  position: relative;
-  display: block;
-}
-
-.insertion-seam__activity {
-  width: 34px;
-  height: 32px;
-}
-
-.insertion-seam__phase {
-  width: 40px;
-  height: 38px;
-}
-
-.insertion-seam__activity svg,
-.insertion-seam__phase svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-.insertion-seam__label {
-  position: absolute;
-  left: 50%;
-  top: 52%;
-  transform: translate(-50%, -50%);
-  font-family: "Brandon Grotesque", ui-sans-serif, system-ui, sans-serif;
-  font-weight: 700;
-  font-size: 7px;
-  line-height: 1;
-  letter-spacing: -0.04em;
-  white-space: nowrap;
-  color: #1a1a1a;
-  pointer-events: none;
-}
-
-.insertion-seam__label--phase {
-  font-size: 9px;
-  letter-spacing: -0.02em;
-}
-
-.insertion-seam__checkpoint {
-  display: block;
-  width: 19px;
-  height: 24px;
-  object-fit: contain;
-  transform: rotate(12deg);
-  pointer-events: none;
 }
 
 .insertion-picker {
