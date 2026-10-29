@@ -40,10 +40,18 @@ type ProcessTokenViewProps = {
   seatedTurn?: number;
   /** Click the token's pentagon. Starting Point and Endpoint stay silent. */
   onSelect?: () => void;
+  /** Press that can become a drag. A short press still selects. */
+  onPress?: (event: ReactPointerEvent<SVGPolygonElement>) => void;
+  onHover?: () => void;
+  onHoverEnd?: () => void;
+  /** Lifted copy that follows the pointer. */
+  floating?: boolean;
   selectLabel?: string;
   selected?: boolean;
   /** Sits behind an open phase or activity radar. */
   behind?: boolean;
+  /** Highlights this token in the exploration preview. */
+  marked?: boolean;
 };
 
 const PHASE_PLACEHOLDER: PentagonArt = {
@@ -65,9 +73,14 @@ export function ProcessTokenView({
   pentagonArt,
   seatedTurn = 0,
   onSelect,
+  onPress,
+  onHover,
+  onHoverEnd,
+  floating = false,
   selectLabel,
   selected = false,
   behind = false,
+  marked = false,
 }: ProcessTokenViewProps) {
   const geometry = geometryFor(placed.token);
   const frame = artFrame(geometry);
@@ -78,17 +91,29 @@ export function ProcessTokenView({
       : null;
   const editable =
     placed.token.type === "phase" || placed.token.type === "activity";
-  const hit = onSelect ? (geometry.outline ?? geometry.pentagon) : null;
+  const hit = onSelect || onPress ? (geometry.outline ?? geometry.pentagon) : null;
   const spin = editable
     ? downwardLabelSpin(placed.heading) + (placed.token.turn ?? 0) * 72
     : 0;
   const pivot = geometry.outline ? centroid(geometry.outline) : null;
+  const spinStyle =
+    spin !== 0 && pivot
+      ? {
+          transform: `rotate(${spin}deg)`,
+          transformOrigin: `${pivot.x}px ${pivot.y}px`,
+        }
+      : undefined;
 
   return (
     <div
-      className={
-        behind ? "process-token process-token--behind" : "process-token"
-      }
+      className={[
+        "process-token",
+        behind ? "process-token--behind" : "",
+        marked ? "process-token--marked" : "",
+        floating ? "process-token--floating" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       style={{ transform: tokenTransform(placed) }}
       role="img"
       aria-label={placed.token.label}
@@ -103,10 +128,9 @@ export function ProcessTokenView({
         <div
           className="process-token__spin"
           style={
-            spin !== 0 && pivot && geometry.outline
+            spinStyle && geometry.outline
               ? {
-                  transform: `rotate(${spin}deg)`,
-                  transformOrigin: `${pivot.x}px ${pivot.y}px`,
+                  ...spinStyle,
                   clipPath: `polygon(${geometry.outline
                     .map(
                       (point) =>
@@ -165,12 +189,13 @@ export function ProcessTokenView({
             <polygon points={polygonPoints(geometry.pentagon)} fill="#082eef" />
           </svg>
         ) : null}
-        {hit && onSelect ? (
+        {hit ? (
           <svg
             className="process-token__hit"
             viewBox={`0 0 ${frame.width} ${frame.height}`}
             width={frame.width}
             height={frame.height}
+            style={spinStyle}
           >
             <polygon
               points={polygonPoints(hit)}
@@ -178,12 +203,19 @@ export function ProcessTokenView({
               tabIndex={0}
               aria-label={`Select ${selectLabel ?? placed.token.label}`}
               aria-pressed={selected}
-              onPointerDown={stopTokenPointer}
+              onPointerDown={(event) => {
+                stopTokenPointer(event);
+                onPress?.(event);
+              }}
+              onPointerEnter={onHover}
+              onPointerLeave={onHoverEnd}
               onClick={(event) => {
                 event.stopPropagation();
-                onSelect();
+                if (onPress) return;
+                onSelect?.();
               }}
               onKeyDown={(event) => {
+                if (!onSelect) return;
                 if (event.key !== "Enter" && event.key !== " ") return;
                 event.preventDefault();
                 onSelect();

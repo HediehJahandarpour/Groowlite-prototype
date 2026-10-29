@@ -20,15 +20,13 @@ import {
   START_PENTAGON,
 } from "../process/tokenGeometry";
 import { tokenTransform } from "../process/processLayout";
-import { phaseRadialEntries, type WorldBounds } from "../process/radialLayout";
 import type {
   PlacedToken,
   Point,
   ProcessSlot,
   ProcessToken,
 } from "../process/processTypes";
-import { RadialActivitySelector } from "./RadialActivitySelector";
-import { RadialSelector } from "./RadialSelector";
+import { ImmersiveTokenExplorer } from "./exploration/ImmersiveTokenExplorer";
 import "./InsertionMenu.css";
 
 type InsertionMenuProps = {
@@ -42,11 +40,16 @@ type InsertionMenuProps = {
   category: MenuCategory | null;
   onActivate: (index: number) => void;
   onCategory: (category: MenuCategory) => void;
-  onPick: (entry: CatalogEntry) => void;
+  onPick: (entry: CatalogEntry, keepOpen?: boolean) => void;
+  onExploreMode: (category: MenuCategory) => void;
+  addedCount: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   onClose: () => void;
-  onFitRadial: (bounds: WorldBounds) => void;
-  gradientHost: HTMLDivElement | null;
   processTokens: ProcessToken[];
+  replaceId: string | null;
   viewportRef: RefObject<HTMLDivElement | null>;
   /** Camera. The plus is drawn in screen space, so zoom does not scale it. */
   view: CanvasView;
@@ -56,9 +59,11 @@ type InsertionMenuProps = {
   placeholderOpen: boolean;
   /** World point where Switch opens the phase or activity picker. */
   switchOrigin: Point | null;
+  /** Hide the add controls while a token is being reordered. */
+  suspended?: boolean;
 };
 
-const BAR_OPTIONS: MenuCategory[] = ["activity", "phase", "checkpoint"];
+const BAR_OPTIONS: MenuCategory[] = ["activity", "phase"];
 
 const SEAM_SIZE = 50;
 const GLYPH_WIDTH: Record<MenuCategory, number> = {
@@ -108,44 +113,53 @@ export function InsertionMenu({
   onActivate,
   onCategory,
   onPick,
+  onExploreMode,
+  addedCount,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onClose,
-  onFitRadial,
-  gradientHost,
   processTokens,
+  replaceId,
   viewportRef,
   view,
   markedIndex,
   placeholderOpen,
   switchOrigin,
+  suspended = false,
 }: InsertionMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const seamRef = useRef<HTMLDivElement>(null);
   const [seamHost, setSeamHost] = useState<HTMLElement | null>(null);
   const [imageStamp, setImageStamp] = useState(() => Date.now());
-  const [holdRadial, setHoldRadial] = useState(false);
-  const [holdActivity, setHoldActivity] = useState(false);
+  const [explorerMode, setExplorerMode] = useState<MenuCategory | null>(null);
   const [pinned, setPinned] = useState<number | null>(null);
   const start = placed.find((item) => item.token.type === "start");
   const phaseOpen = category === "phase";
   const activityOpen = category === "activity";
+  const checkpointOpen = category === "checkpoint";
+
+  if (
+    (category === "phase" ||
+      category === "activity" ||
+      category === "checkpoint") &&
+    explorerMode !== category
+  ) {
+    setExplorerMode(category);
+  }
 
   useEffect(() => {
-    if (phaseOpen) {
-      setHoldRadial(true);
-      setHoldActivity(false);
+    if (
+      category === "phase" ||
+      category === "activity" ||
+      category === "checkpoint"
+    ) {
       return;
     }
-    if (activityOpen) {
-      setHoldActivity(true);
-      setHoldRadial(false);
-      return;
-    }
-    const id = window.setTimeout(() => {
-      setHoldRadial(false);
-      setHoldActivity(false);
-    }, 380);
+    const id = window.setTimeout(() => setExplorerMode(null), 480);
     return () => window.clearTimeout(id);
-  }, [phaseOpen, activityOpen]);
+  }, [category]);
 
   useEffect(() => {
     if (open) setImageStamp(Date.now());
@@ -183,7 +197,11 @@ export function InsertionMenu({
       const target = event.target;
       const onFilter =
         target instanceof Element &&
-        Boolean(target.closest(".activity-filter, .token-toolbar"));
+        Boolean(
+          target.closest(
+            ".activity-filter, .token-toolbar, .immersive-explorer",
+          ),
+        );
       if (onFilter) return;
       const onCanvas =
         target instanceof Element && Boolean(target.closest(".canvas"));
@@ -217,16 +235,14 @@ export function InsertionMenu({
 
   const pose = menuPose(activeIndex, start, slots, phaseInStart);
   const labelAngle = -((pose.heading * 180) / Math.PI);
-  const listCategory = category === "checkpoint" ? category : null;
+  const listCategory = null as MenuCategory | null;
   const choices = listCategory ? TOKEN_CATALOG[listCategory] : [];
   const pickerAt = listCategory
     ? pickerPoint(PICKER_OFFSET[listCategory], pose)
     : null;
-  const radialOrigin =
-    switchOrigin ?? phaseOrigin(activeIndex, start, slots, phaseInStart);
-  const libraryOpen = phaseOpen || activityOpen;
-  const libraryHold = holdRadial || holdActivity;
-  const pickerBusy = libraryOpen || libraryHold || Boolean(switchOrigin);
+  const explorerOpen = phaseOpen || activityOpen || checkpointOpen;
+  const pickerBusy =
+    explorerOpen || explorerMode !== null || Boolean(switchOrigin);
 
   function chooseAt(index: number, id: MenuCategory) {
     if (!phaseInStart && index <= 0 && id !== "phase") return;
@@ -240,6 +256,15 @@ export function InsertionMenu({
   }
 
   function seamControls() {
+    const chain = processTokens
+      .filter(
+        (token) =>
+          token.type === "phase" ||
+          token.type === "activity" ||
+          token.type === "checkpoint",
+      )
+      .slice()
+      .sort((a, b) => a.order - b.order);
     return Array.from({ length: occupied + 1 }, (_, index) => {
       if (switchOrigin && index === markedIndex) return null;
       if (phaseInStart && index === 0) return null;
@@ -252,7 +277,10 @@ export function InsertionMenu({
         !phaseInStart && index <= 0
           ? (["phase"] as MenuCategory[])
           : BAR_OPTIONS;
-      const resting = index === markedIndex || (!phaseInStart && index === 0);
+      const beforePhase = chain[index]?.type === "phase";
+      const resting =
+        !beforePhase &&
+        (index === markedIndex || (!phaseInStart && index === 0));
       const holding = pickerBusy && index === activeIndex;
       return (
         <div
@@ -272,8 +300,13 @@ export function InsertionMenu({
             ]
               .filter(Boolean)
               .join(" ")}
-            style={{ ["--open-width" as string]: `${seamOpenWidth(options)}px` }}
-            onPointerEnter={() => onActivate(index)}
+            style={{
+              ["--open-width" as string]: `${seamOpenWidth(options)}px`,
+            }}
+            onPointerEnter={() => {
+              if (document.documentElement.classList.contains("is-reordering")) return;
+              onActivate(index);
+            }}
           >
             <button
               type="button"
@@ -285,7 +318,11 @@ export function InsertionMenu({
                 setPinned((current) => (current === index ? null : index));
               }}
             />
-            <span className="insertion-seam__options" role="toolbar" aria-label="Add a token">
+            <span
+              className="insertion-seam__options"
+              role="toolbar"
+              aria-label="Add a token"
+            >
               {options.map((id) => (
                 <button
                   key={id}
@@ -306,47 +343,37 @@ export function InsertionMenu({
   }
 
   return (
-    <div
-      className={
-        libraryOpen || libraryHold
-          ? "insertion-layer insertion-layer--depth"
-          : "insertion-layer"
-      }
-      ref={rootRef}
-      onPointerDown={stopPointer}
-    >
-      {seamHost
+    <div className="insertion-layer" ref={rootRef} onPointerDown={stopPointer}>
+      {seamHost && !suspended
         ? createPortal(
-            <div className="insertion-seams" ref={seamRef} onPointerDown={stopPointer}>
+            <div
+              className="insertion-seams"
+              ref={seamRef}
+              onPointerDown={stopPointer}
+            >
               {seamControls()}
             </div>,
             seamHost,
           )
         : null}
 
-      {holdRadial ? (
-        <RadialSelector
-          open={phaseOpen}
-          tokens={phaseRadialEntries()}
-          gradientSrc={`/tokens/phase-gradient.svg?v=${imageStamp}`}
-          categoryLabel="phase"
-          origin={radialOrigin}
-          gradientHost={gradientHost}
-          onPick={onPick}
-          onFit={onFitRadial}
-        />
-      ) : null}
-
-      {holdActivity ? (
-        <RadialActivitySelector
-          open={activityOpen}
-          origin={radialOrigin}
+      {explorerMode === "phase" ||
+      explorerMode === "activity" ||
+      explorerMode === "checkpoint" ? (
+        <ImmersiveTokenExplorer
+          open={explorerOpen}
+          mode={explorerMode}
           tokens={processTokens}
           insertionIndex={activeIndex}
-          gradientHost={gradientHost}
-          viewportRef={viewportRef}
-          onPick={onPick}
-          onFit={onFitRadial}
+          replaceId={replaceId}
+          onPick={(entry) => onPick(entry, true)}
+          onMode={onExploreMode}
+          addedCount={addedCount}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={onUndo}
+          onRedo={onRedo}
+          onClose={onClose}
         />
       ) : null}
 
@@ -409,10 +436,15 @@ function BarGlyph({
 
   const phase = category === "phase";
   return (
-    <span className={phase ? "insertion-seam__phase" : "insertion-seam__activity"}>
+    <span
+      className={phase ? "insertion-seam__phase" : "insertion-seam__activity"}
+    >
       <svg viewBox="0 0 100 100" aria-hidden="true">
         {phase ? <polygon points={PENTAGON_OUTLINE} fill="#ffffff" /> : null}
-        <polygon points={phase ? PENTAGON_FACE : PENTAGON_OUTLINE} fill="#efdec8" />
+        <polygon
+          points={phase ? PENTAGON_FACE : PENTAGON_OUTLINE}
+          fill="#efdec8"
+        />
       </svg>
       <span
         className={
@@ -500,19 +532,6 @@ function menuPose(
       `translate(${-BLUE_CENTER.x}px, ${-BLUE_CENTER.y}px)`,
     ].join(" "),
   };
-}
-
-function phaseOrigin(
-  index: number,
-  start: PlacedToken,
-  slots: ProcessSlot[],
-  phaseInStart: boolean,
-): Point {
-  if (index <= 0) return seamPoint(0, start, slots, phaseInStart);
-  const slot = nextPlaceholder(index, slots, phaseInStart);
-  return slot
-    ? centroid(slot.polygon)
-    : seamPoint(0, start, slots, phaseInStart);
 }
 
 /** The empty pentagon that follows the token just placed. */

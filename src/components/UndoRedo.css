@@ -1,6 +1,6 @@
 .history {
   position: absolute;
-  z-index: 2;
+  z-index: 7;
   top: 14px;
   right: 52px;
   display: flex;
@@ -11,16 +11,32 @@
 .history__button {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #d5dbe6;
+  border-radius: 50%;
+  background: #fff;
   color: var(--groow-blue);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 1px 2px rgba(40, 60, 90, 0.08),
+    0 6px 14px rgba(40, 60, 90, 0.14);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.history__button:hover:not(:disabled) {
+  border-color: #b7c0d0;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 2px 4px rgba(40, 60, 90, 0.1),
+    0 8px 16px rgba(40, 60, 90, 0.16);
 }
 
 .history__button:disabled {
-  opacity: 1;
+  opacity: 0.35;
   cursor: default;
 }
 

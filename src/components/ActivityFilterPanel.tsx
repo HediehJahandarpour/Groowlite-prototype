@@ -1,10 +1,13 @@
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { X } from "lucide-react";
 import searchIcon from "../assets/activity-search.svg";
 import { PHASE_FILTERS } from "../recommendations/activityFilters";
 import type { PhaseId } from "../data/phasePalette";
@@ -12,6 +15,8 @@ import "./ActivityFilterPanel.css";
 
 type ActivityFilterPanelProps = {
   open: boolean;
+  /** Starts as a search icon. The field and phase filters open from that icon. */
+  collapsible?: boolean;
   viewport: HTMLElement | null;
   query: string;
   phases: readonly PhaseId[];
@@ -27,6 +32,7 @@ function stopCanvas(event: ReactPointerEvent | ReactWheelEvent) {
 
 export function ActivityFilterPanel({
   open,
+  collapsible = false,
   viewport,
   query,
   phases,
@@ -36,7 +42,30 @@ export function ActivityFilterPanel({
   onClear,
 }: ActivityFilterPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(!collapsible);
   const filtersActive = query.trim().length > 0 || phases.length > 0;
+  const showBar = !collapsible || expanded;
+
+  useEffect(() => {
+    if (!open) setExpanded(!collapsible);
+  }, [open, collapsible]);
+
+  useEffect(() => {
+    if (!collapsible || !expanded) return;
+    panelRef.current?.querySelector("input")?.focus();
+  }, [collapsible, expanded]);
+
+  useEffect(() => {
+    if (!collapsible || !expanded) return;
+    function onPointerDown(event: PointerEvent) {
+      const panel = panelRef.current;
+      if (!panel || !(event.target instanceof Node) || panel.contains(event.target)) return;
+      if (filtersActive) return;
+      setExpanded(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [collapsible, expanded, filtersActive]);
 
   useLayoutEffect(() => {
     if (!open || !viewport) return;
@@ -59,44 +88,72 @@ export function ActivityFilterPanel({
   return createPortal(
     <aside
       ref={panelRef}
-      className="activity-filter"
+      className={
+        showBar ? "activity-filter" : "activity-filter activity-filter--icon"
+      }
       aria-label="Search and filter activities"
       onPointerDown={stopCanvas}
       onWheel={stopCanvas}
     >
-      <ActivitySearchInput query={query} onQuery={onQuery} />
-      <div className="activity-filter__phases">
-        <h2 className="activity-filter__heading" id="activity-filter-heading">
-          Filter by Phases
-        </h2>
-        <div
-          className="activity-filter__pills"
-          role="group"
-          aria-labelledby="activity-filter-heading"
-        >
-          {PHASE_FILTERS.map((phase) => (
-            <PhaseFilterPill
-              key={phase.id}
-              id={phase.id}
-              label={phase.label}
-              color={phase.color}
-              pressed={phases.includes(phase.id)}
-              onToggle={onTogglePhase}
-            />
-          ))}
-        </div>
-      </div>
-      {empty ? (
-        <EmptyFilterResults onClear={onClear} />
-      ) : filtersActive ? (
+      {showBar ? (
+        <>
+          <div className="activity-filter__row">
+            <ActivitySearchInput query={query} onQuery={onQuery} />
+            {collapsible ? (
+              <button
+                type="button"
+                className="activity-filter__close"
+                aria-label="Close search"
+                onClick={() => setExpanded(false)}
+              >
+                <X size={16} strokeWidth={2.25} />
+              </button>
+            ) : null}
+          </div>
+          <div className="activity-filter__phases">
+            <h2 className="activity-filter__heading" id="activity-filter-heading">
+              Filter by Phases
+            </h2>
+            <div
+              className="activity-filter__pills"
+              role="group"
+              aria-labelledby="activity-filter-heading"
+            >
+              {PHASE_FILTERS.map((phase) => (
+                <PhaseFilterPill
+                  key={phase.id}
+                  id={phase.id}
+                  label={phase.label}
+                  color={phase.color}
+                  pressed={phases.includes(phase.id)}
+                  onToggle={onTogglePhase}
+                />
+              ))}
+            </div>
+          </div>
+          {empty ? (
+            <EmptyFilterResults onClear={onClear} />
+          ) : filtersActive ? (
+            <button
+              type="button"
+              className="activity-filter__clear"
+              onClick={onClear}
+            >
+              Clear filters
+            </button>
+          ) : null}
+        </>
+      ) : (
         <button
           type="button"
-          className="activity-filter__clear"
-          onClick={onClear}
+          className="activity-filter__launch"
+          aria-label="Search and filter"
+          aria-expanded="false"
+          onClick={() => setExpanded(true)}
         >
-          Clear filters
+          <img src={searchIcon} alt="" width={18} height={18} />
         </button>
-      ) : null}
+      )}
     </aside>,
     viewport,
   );

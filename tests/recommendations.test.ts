@@ -99,7 +99,7 @@ test("every activity is scored and placed on exactly one layer", () => {
   assert.equal(ids.length, ACTIVITY_REGISTRY.length);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(layers.at(-1)?.length ? layers.at(-1)!.length > 0 : false, true);
-  assert.equal(layers[0].length <= 4, true);
+  assert.equal(layers[0].length <= 6, true);
   for (const layer of layers.slice(1)) assert.equal(layer.length <= 6, true);
 });
 
@@ -275,8 +275,9 @@ test("the previous activity stays in the near suggestions, with process follow-u
   assert.ok(front.includes("kwaliteitscontrole"));
   assert.ok(front.includes("echt-nep") || front.includes("nabespreken"));
   assert.ok(front.includes("prototype"));
-  assert.equal(front.includes("presenteren"), false);
-  assert.equal(front.includes("duiveltje"), false);
+  const nearest = front.slice(0, 4);
+  assert.equal(nearest.includes("presenteren"), false);
+  assert.equal(nearest.includes("duiveltje"), false);
 
   const shown = layers.flat().map((activity) => activity.id);
   assert.equal(shown.length, ACTIVITY_REGISTRY.length);

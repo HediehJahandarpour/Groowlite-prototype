@@ -47,8 +47,14 @@
 
 .insertion-seam:hover,
 .insertion-seam:focus-within,
-.insertion-seam--visible {
+.insertion-seam--visible,
+.insertion-seam--open {
   opacity: 1;
+}
+
+.insertion-seams:has(.insertion-seam:hover) .insertion-seam--visible:not(:hover):not(:focus-within),
+.insertion-seams:has(.insertion-seam--open) .insertion-seam--visible:not(.insertion-seam--open):not(:hover):not(:focus-within) {
+  opacity: 0;
 }
 
 .insertion-seam:hover,

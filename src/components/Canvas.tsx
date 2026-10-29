@@ -140,7 +140,7 @@ export function Canvas({
       target instanceof Element &&
       Boolean(
         target.closest(
-          "button, a, input, textarea, .activity-filter, .process-token, .token-toolbar",
+          "button, a, input, textarea, .activity-filter, .process-token, .token-toolbar, .token-grip",
         ),
       );
     if (startedOnControl) return;

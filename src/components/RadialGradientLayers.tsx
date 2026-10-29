@@ -17,14 +17,15 @@ type RingPaint = {
   stroke?: number;
 };
 
-const STOPS = ["0", "0.15", "0.3", "0.5", "0.7", "0.85", "1"];
+export const PLATE_RING_STOPS = ["0", "0.15", "0.3", "0.5", "0.7", "0.85", "1"];
+const STOPS = PLATE_RING_STOPS;
 
 /**
  * Original blue plate. The first stop of the centre ring is the reference:
  * it becomes the phase colour, and every lighter stop fades toward white
  * by the same amount it did in this blue.
  */
-const BLUE: RingPaint[] = [
+export const PLATE_RINGS: RingPaint[] = [
   {
     stops: [
       "#367AC3",
@@ -140,7 +141,12 @@ function fadeOf(hex: string): number {
   return Math.min(1, Math.max(0, amount));
 }
 
+const BLUE = PLATE_RINGS;
 const FADE = BLUE.map((ring) => ring.stops.map(fadeOf));
+
+export function tintedRingStops(color: Rgb): string[][] {
+  return FADE.map((ring) => ring.map((fade) => tint(fade, color)));
+}
 
 function tint(fade: number, color: Rgb): string {
   const mixed = [color.r, color.g, color.b].map((channel) =>

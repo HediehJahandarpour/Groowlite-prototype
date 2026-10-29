@@ -194,6 +194,39 @@ test("the starting block begins with a phase, and phases outsize activities", ()
   assert.ok(Math.hypot(end.x - activitySlot.exit.x, end.y - activitySlot.exit.y) < 1);
 });
 
+test("continuous inserts advance the gap in selection order", () => {
+  const planning = token({
+    id: "planning",
+    type: "activity",
+    label: "Planning",
+    asset: "planning@2x.png",
+    order: 2,
+  });
+  const brainstorm: CatalogEntry = {
+    id: "brainstorm",
+    asset: "brainstorm@2x.png",
+    label: "Brainstorm",
+    type: "activity",
+    category: "activity",
+  };
+  const research: CatalogEntry = {
+    id: "research",
+    asset: "onderzoeken@2x.png",
+    label: "Research",
+    type: "activity",
+    category: "activity",
+  };
+  let cursor = 2;
+  let tokens = insertToken(processWith(understand, planning), cursor, brainstorm);
+  cursor += 1;
+  tokens = insertToken(tokens, cursor, research);
+  const labels = tokens
+    .filter((item) => item.type !== "start" && item.type !== "end")
+    .map((item) => item.label);
+  assert.deepEqual(labels, ["Understand", "Planning", "Brainstorm", "Research"]);
+  assert.notEqual(tokens[3]?.id, tokens[4]?.id);
+});
+
 test("label spin turns the artwork so the word faces down", () => {
   for (const degrees of [0, 40, 90, -90, 180, 36]) {
     const spin = downwardLabelSpin((degrees * Math.PI) / 180);

@@ -25,6 +25,14 @@
   z-index: 0;
 }
 
+.process-token--marked {
+  z-index: 2;
+}
+
+.process-token--marked .process-token__art img {
+  filter: drop-shadow(0 0 14px rgba(8, 46, 239, 0.55));
+}
+
 .process-token--behind .process-token__hit polygon {
   pointer-events: none;
 }
@@ -44,6 +52,7 @@
   top: 0;
   left: 0;
   display: block;
+  pointer-events: none;
 }
 
 .process-token__hit {
@@ -56,14 +65,19 @@
 
 .process-token__hit polygon {
   fill: transparent;
+  stroke: transparent;
+  stroke-width: 3px;
+  stroke-linejoin: round;
   cursor: pointer;
   pointer-events: fill;
+  transition:
+    fill 120ms ease,
+    stroke 120ms ease;
 }
 
+.process-token__hit polygon:focus,
 .process-token__hit polygon:focus-visible {
   outline: none;
-  stroke: var(--groow-blue);
-  stroke-width: 4;
 }
 
 .process-token__mark {
@@ -75,4 +89,100 @@
   top: 0;
   left: 0;
   pointer-events: none;
+}
+
+.process-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.process-layer--dragging .process-token:not(.process-token--floating) {
+  transition-duration: var(--reflow-ms, 260ms);
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.drag-floater {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 8;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 18px 14px rgba(28, 28, 28, 0.22));
+}
+
+.drag-floater .process-token {
+  transition: none;
+}
+
+.drag-slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 4000px;
+  height: 4000px;
+  overflow: visible;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.drag-slot polygon {
+  fill: rgba(8, 46, 239, 0.2);
+  stroke: #082eef;
+  stroke-linejoin: round;
+  animation: drag-slot-in 160ms ease-out;
+}
+
+.drag-slot--home polygon {
+  fill: rgba(8, 46, 239, 0.08);
+  stroke: rgba(8, 46, 239, 0.38);
+}
+
+.token-grip {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  width: 28px;
+  height: 18px;
+  margin: 0;
+  padding: 6px 0 0;
+  border: 0;
+  background: transparent;
+  transform-origin: center top;
+  cursor: grab;
+  pointer-events: auto;
+  animation: drag-slot-in 140ms ease-out;
+}
+
+.token-grip span {
+  display: block;
+  width: 20px;
+  height: 2.5px;
+  border-radius: 1px;
+  background: #b5b5b8;
+}
+
+.token-grip:focus,
+.token-grip:focus-visible {
+  outline: none;
+}
+
+html.is-reordering,
+html.is-reordering * {
+  cursor: grabbing !important;
+}
+
+@keyframes drag-slot-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }

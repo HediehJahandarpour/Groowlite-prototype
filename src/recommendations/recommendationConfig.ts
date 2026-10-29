@@ -33,11 +33,8 @@ export const PHASE_EXPLANATION = {
 };
 
 /**
- * Activities on each radial layer, closest to the centre first.
- * The front ring is drawn at 120px on the small circle, where four tokens
- * fit without overlapping. Every later layer passes through the active ring
- * at 96px, where six fit. Further activities open another layer of six.
- * The 5 / 7 / 9 example overlaps those token sizes, so the capacities here
- * follow the existing radial geometry instead.
+ * Activities on each depth layer, closest to the viewer first.
+ * The choosable layer holds six tokens. Later layers hold six,
+ * and anything left over opens another layer of six.
  */
-export const LAYER_CAPACITIES = [4, 6] as const;
+export const LAYER_CAPACITIES = [6, 6] as const;

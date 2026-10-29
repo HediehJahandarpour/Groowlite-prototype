@@ -175,6 +175,7 @@ export function activityLayersFor(
   insertionIndex: number,
   pool: readonly ActivityRecord[] = ACTIVITY_REGISTRY,
   colourPhases: readonly PhaseId[] = [],
+  capacities: readonly number[] = LAYER_CAPACITIES,
 ): { ranked: RankedActivity[]; ordered: RankedActivity[]; layers: ActivityRecord[][]; context: ProcessContext } {
   const activities = pool.slice();
   const context = readProcessContext(tokens, insertionIndex, ACTIVITY_REGISTRY);
@@ -189,5 +190,10 @@ export function activityLayersFor(
     colourPhases.length > 0
       ? orderByPhaseColour(ranked, activities, colourPhases)
       : orderSuggestions(ranked, activities, context);
-  return { ranked, ordered, layers: distributeIntoLayers(ordered, activities), context };
+  return {
+    ranked,
+    ordered,
+    layers: distributeIntoLayers(ordered, activities, capacities),
+    context,
+  };
 }

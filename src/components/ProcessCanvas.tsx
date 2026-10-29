@@ -1,12 +1,15 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import type { CanvasView } from "../canvas/view";
-import { ACTIVITY_LAYOUT } from "../process/activityMotion";
+import { DRAG } from "../process/dragConfig";
+import type { DragPose } from "../process/dragPose";
+import { slotPolygon } from "../process/dragTargets";
 import { nextAddSeam } from "../process/editToken";
 import { layoutProcess, tokenWorldOutline } from "../process/processLayout";
-import { RADIAL, type WorldBounds } from "../process/radialLayout";
-import { geometryFor } from "../process/tokenGeometry";
+import { geometryFor, polygonPoints } from "../process/tokenGeometry";
 import type { CatalogEntry, MenuCategory } from "../process/tokenCatalog";
 import type { PlacedToken, Point, ProcessToken } from "../process/processTypes";
+import { useProcessDrag } from "./useProcessDrag";
 import { InsertionMenu } from "./InsertionMenu";
 import { ProcessTokenView } from "./ProcessToken";
 import { TokenChrome } from "./TokenChrome";
@@ -19,9 +22,14 @@ type ProcessCanvasProps = {
   category: MenuCategory | null;
   onActivate: (index: number) => void;
   onCategory: (category: MenuCategory) => void;
-  onPick: (entry: CatalogEntry) => void;
+  onPick: (entry: CatalogEntry, keepOpen?: boolean) => void;
+  onExploreMode: (category: MenuCategory) => void;
+  addedCount: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   onCloseMenu: () => void;
-  onFitRadial: (bounds: WorldBounds) => void;
   viewportRef: RefObject<HTMLDivElement | null>;
   view: CanvasView;
   selectedId: string | null;
@@ -30,6 +38,8 @@ type ProcessCanvasProps = {
   gapOpen: boolean;
   onRemove: () => void;
   onSwitch: () => void;
+  onReorder: (tokens: ProcessToken[]) => void;
+  onPanBy: (dx: number, dy: number) => void;
 };
 
 export function ProcessCanvas({
@@ -40,8 +50,13 @@ export function ProcessCanvas({
   onActivate,
   onCategory,
   onPick,
+  onExploreMode,
+  addedCount,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onCloseMenu,
-  onFitRadial,
   viewportRef,
   view,
   selectedId,
@@ -50,55 +65,83 @@ export function ProcessCanvas({
   gapOpen,
   onRemove,
   onSwitch,
+  onReorder,
+  onPanBy,
 }: ProcessCanvasProps) {
-  const { placed, slots, occupied, seatedInStart } = layoutProcess(tokens);
+  const {
+    dragging,
+    blockIds,
+    sourceIndex,
+    activeIndex,
+    primaryId,
+    displayTokens,
+    floatPoses,
+    beginGesture,
+  } = useProcessDrag({
+    tokens,
+    view,
+    viewportRef,
+    onReorder,
+    onSelect,
+    onPanBy,
+    onCloseMenu,
+  });
+  const hidden = useMemo(() => new Set(blockIds), [blockIds]);
+  const layout = useMemo(() => layoutProcess(displayTokens), [displayTokens]);
+  const { placed, slots, occupied, seatedInStart } = layout;
   const seamCount = occupied + (seatedInStart ? 1 : 0);
   const insertionIndex = Math.max(0, Math.min(activeInsertion, seamCount));
-  const phaseLibrary = menuOpen && category === "phase";
-  const activityLibrary = menuOpen && category === "activity";
-  const radarOpen = phaseLibrary || activityLibrary;
-  const radarFront = useRadarHold(radarOpen);
-  const [gradientHost, setGradientHost] = useState<HTMLDivElement | null>(null);
-  const seated = seatedToken(tokens);
+  const seated = seatedToken(displayTokens);
   const pentagonImage = seated ? `/tokens/${seated.asset}` : undefined;
   const pentagonArt = seated ? phaseArt(seated) : undefined;
-  const selectedOutline = selectionOutline(placed, tokens, selectedId);
+  const seatedDragged = Boolean(seated && hidden.has(seated.id));
+  const selectedOutline =
+    dragging ? null : selectionOutline(placed, displayTokens, selectedId);
   const switchOrigin =
     replaceId && selectedOutline ? centroidOf(selectedOutline) : null;
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const hoverTimer = useRef(0);
+  const homeTarget = dragging && activeIndex === sourceIndex;
+  const tokenById = useMemo(
+    () => new Map(displayTokens.map((token) => [token.id, token])),
+    [displayTokens],
+  );
+
+  function showHover(id: string) {
+    window.clearTimeout(hoverTimer.current);
+    setHoveredId(id);
+  }
+
+  function hideHover(id: string) {
+    window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = window.setTimeout(() => {
+      setHoveredId((current) => (current === id ? null : current));
+    }, 160);
+  }
+
+  const floaterIds = primaryId
+    ? [...blockIds.filter((id) => id !== primaryId), primaryId]
+    : blockIds;
 
   return (
-    <>
-      <div
-        ref={setGradientHost}
-        className={
-          radarFront
-            ? "phase-gradient-host phase-gradient-host--front"
-            : "phase-gradient-host"
-        }
-      />
+    <div
+      className={dragging ? "process-layer process-layer--dragging" : "process-layer"}
+      style={{ ["--reflow-ms" as string]: `${DRAG.reflowMs}ms` }}
+    >
       {placed.map((item) => {
-        const parked =
-          !replaceId &&
-          (phaseLibrary || activityLibrary) &&
-          item.token.type === "end"
-            ? {
-                ...item,
-                x:
-                  item.x +
-                  (activityLibrary
-                    ? ACTIVITY_LAYOUT.endpointClearance
-                    : RADIAL.endpointClearance),
-              }
-            : item;
+        if (hidden.has(item.token.id)) return null;
+        const dragId = dragTargetId(item, seated);
         return (
           <ProcessTokenView
             key={item.token.id}
-            placed={parked}
+            placed={item}
             hidePentagon={item.token.type === "start"}
             pentagonImage={
-              item.token.type === "start" ? pentagonImage : undefined
+              item.token.type === "start" && !seatedDragged ? pentagonImage : undefined
             }
-            pentagonArt={item.token.type === "start" ? pentagonArt : undefined}
+            pentagonArt={
+              item.token.type === "start" && !seatedDragged ? pentagonArt : undefined
+            }
             seatedTurn={item.token.type === "start" ? (seated?.turn ?? 0) : 0}
             selected={
               item.token.id === selectedId ||
@@ -107,16 +150,59 @@ export function ProcessCanvas({
             selectLabel={
               item.token.type === "start" ? seated?.label : undefined
             }
-            onSelect={selectHandler(item, seated, onSelect)}
-            behind={radarFront}
+            onSelect={dragId ? () => onSelect(dragId) : undefined}
+            onPress={dragId ? (event) => beginGesture(dragId, event) : undefined}
+            onHover={dragId ? () => showHover(dragId) : undefined}
+            onHoverEnd={dragId ? () => hideHover(dragId) : undefined}
           />
         );
       })}
+      {dragging
+        ? blockIds.map((id) => {
+            const polygon = slotPolygon(layout, displayTokens, id);
+            if (polygon.length < 3) return null;
+            return (
+              <svg
+                key={id}
+                className={homeTarget ? "drag-slot drag-slot--home" : "drag-slot"}
+                viewBox="0 0 4000 4000"
+                aria-hidden="true"
+              >
+                <polygon
+                  points={polygonPoints(polygon)}
+                  strokeWidth={2.5 / view.scale}
+                />
+              </svg>
+            );
+          })
+        : null}
+      {floatPoses
+        ? floaterIds.map((id) => {
+            const token = tokenById.get(id);
+            const pose = floatPoses[id];
+            if (!token || !pose) return null;
+            return (
+              <div key={id} className="drag-floater">
+                <ProcessTokenView placed={placedFromPose(token, pose)} floating />
+              </div>
+            );
+          })
+        : null}
+      {!dragging && hoveredId ? (
+        <TokenGrip
+          id={hoveredId}
+          label={tokenById.get(hoveredId)?.label ?? "token"}
+          points={gripOutline(placed, tokens, hoveredId)}
+          viewScale={view.scale}
+          onPress={(event) => beginGesture(hoveredId, event)}
+          onHover={() => showHover(hoveredId)}
+          onHoverEnd={() => hideHover(hoveredId)}
+        />
+      ) : null}
       {selectedOutline ? (
         <TokenChrome
           points={selectedOutline}
           viewScale={view.scale}
-          behind={radarFront}
           onRemove={onRemove}
           onSwitch={
             tokens.find((token) => token.id === selectedId)?.type === "checkpoint"
@@ -136,32 +222,105 @@ export function ProcessCanvas({
         onActivate={onActivate}
         onCategory={onCategory}
         onPick={onPick}
+        onExploreMode={onExploreMode}
+        addedCount={addedCount}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={onUndo}
+        onRedo={onRedo}
         onClose={onCloseMenu}
-        onFitRadial={onFitRadial}
-        gradientHost={gradientHost}
         processTokens={tokens}
+        replaceId={replaceId}
         viewportRef={viewportRef}
         view={view}
         markedIndex={nextAddSeam(tokens, selectedId)}
-        placeholderOpen={gapOpen}
+        placeholderOpen={gapOpen && !dragging}
         switchOrigin={switchOrigin}
+        suspended={dragging}
       />
-    </>
+    </div>
   );
 }
 
-/** Keep the chain recessed until the radar plate has finished leaving. */
-function useRadarHold(open: boolean) {
-  const [held, setHeld] = useState(open);
-  useEffect(() => {
-    if (open) {
-      setHeld(true);
-      return;
-    }
-    const id = window.setTimeout(() => setHeld(false), 380);
-    return () => window.clearTimeout(id);
-  }, [open]);
-  return held;
+function TokenGrip({
+  id,
+  label,
+  points,
+  viewScale,
+  onPress,
+  onHover,
+  onHoverEnd,
+}: {
+  id: string;
+  label: string;
+  points: Point[] | null;
+  viewScale: number;
+  onPress: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onHover: () => void;
+  onHoverEnd: () => void;
+}) {
+  if (!points || points.length < 3 || viewScale <= 0) return null;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  return (
+    <button
+      type="button"
+      className="token-grip"
+      data-token-id={id}
+      aria-label={`Reorder ${label}`}
+      tabIndex={-1}
+      style={{
+        left: (minX + maxX) / 2,
+        top: maxY + 6 / viewScale,
+        transform: `translate(-50%, 0) scale(${1 / viewScale})`,
+      }}
+      onPointerDown={onPress}
+      onPointerEnter={onHover}
+      onPointerLeave={onHoverEnd}
+    >
+      <span />
+      <span />
+    </button>
+  );
+}
+
+function placedFromPose(token: ProcessToken, pose: DragPose): PlacedToken {
+  return {
+    token,
+    x: pose.x,
+    y: pose.y,
+    heading: pose.heading,
+    scale: pose.scale,
+    outputX: null,
+    outputY: null,
+  };
+}
+
+function gripOutline(placed: PlacedToken[], tokens: ProcessToken[], id: string): Point[] | null {
+  const own = placed.find((item) => item.token.id === id);
+  if (own) return tokenWorldOutline(own);
+  const seated = seatedToken(tokens);
+  if (seated?.id !== id) return null;
+  const start = placed.find((item) => item.token.type === "start");
+  return start ? tokenWorldOutline(start) : null;
+}
+
+function dragTargetId(item: PlacedToken, seated: ProcessToken | null): string | null {
+  if (
+    item.token.type === "phase" ||
+    item.token.type === "activity" ||
+    item.token.type === "checkpoint"
+  ) {
+    return item.token.id;
+  }
+  if (item.token.type === "start" && seated) return seated.id;
+  return null;
 }
 
 /** The first chain token, drawn into the starting-point pentagon in place of the blue fill. */
@@ -171,22 +330,6 @@ function seatedToken(tokens: ProcessToken[]): ProcessToken | null {
     .sort((a, b) => a.order - b.order)[0];
   if (!first || !geometryFor(first).outline) return null;
   return first;
-}
-
-function selectHandler(
-  item: PlacedToken,
-  seated: ProcessToken | null,
-  onSelect: (id: string) => void,
-): (() => void) | undefined {
-  if (
-    item.token.type === "phase" ||
-    item.token.type === "activity" ||
-    item.token.type === "checkpoint"
-  ) {
-    return () => onSelect(item.token.id);
-  }
-  if (item.token.type === "start" && seated) return () => onSelect(seated.id);
-  return undefined;
 }
 
 function selectionOutline(

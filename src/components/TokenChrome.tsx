@@ -5,6 +5,11 @@ import { polygonPoints } from "../process/tokenGeometry";
 import type { Point } from "../process/processTypes";
 import "./TokenChrome.css";
 
+/** Selection frame from the canvas token in Figma (node 253:63129). */
+const SELECTION_STROKE = "#0023FF";
+const SELECTION_FILL = "#4F63E0";
+const SELECTION_STROKE_PX = 2;
+
 type TokenChromeProps = {
   /** World-space pentagon of the selected token. */
   points: Point[];
@@ -39,7 +44,19 @@ export function TokenChrome({
   if (points.length < 3) return null;
   const scale = viewScale > 0 ? viewScale : 1;
   const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+  const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
   const top = Math.min(...points.map((point) => point.y));
+  const strokeWidth = SELECTION_STROKE_PX / scale;
+  const frame = points.map((point) => {
+    const dx = point.x - centerX;
+    const dy = point.y - centerY;
+    const reach = Math.hypot(dx, dy) || 1;
+    const push = strokeWidth / 2;
+    return {
+      x: point.x + (dx / reach) * push,
+      y: point.y + (dy / reach) * push,
+    };
+  });
   const handlers = { onRemove, onSwitch };
   const actions = ACTIONS.filter((action) => action.run !== "onSwitch" || onSwitch);
 
@@ -52,10 +69,16 @@ export function TokenChrome({
       >
         <polygon
           points={polygonPoints(points)}
-          fill="rgba(8, 46, 239, 0.14)"
-          stroke="#082eef"
-          strokeWidth={2 / scale}
-          strokeLinejoin="round"
+          fill={SELECTION_FILL}
+          fillOpacity={0.2}
+          stroke="none"
+        />
+        <polygon
+          points={polygonPoints(frame)}
+          fill="none"
+          stroke={SELECTION_STROKE}
+          strokeWidth={strokeWidth}
+          strokeLinejoin="miter"
         />
       </svg>
       <div
