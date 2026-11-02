@@ -2,15 +2,20 @@
   position: fixed;
   inset: 0;
   z-index: 40;
-  opacity: 0;
-  pointer-events: auto;
   overflow: hidden;
   color: var(--ink);
-  transition: opacity 420ms ease;
+  background: transparent;
+  pointer-events: none;
 }
 
 .immersive-explorer--open {
-  opacity: 1;
+  pointer-events: auto;
+}
+
+.explorer-scene,
+.explorer-ui,
+.immersive-explorer .activity-filter {
+  opacity: var(--atmosphere, 0);
 }
 
 .explorer-glass {
@@ -23,10 +28,21 @@
   -webkit-backdrop-filter: blur(12px) saturate(1.12);
 }
 
+.explorer-atmosphere-anchor,
+.explorer-plate-breath {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.explorer-plate-breath {
+  transform-origin: center center;
+}
+
 .explorer-plate {
   position: absolute;
-  left: 50%;
-  top: var(--anchor-y, 46%);
+  left: var(--anchor-x, 50%);
+  top: var(--anchor-y, 50%);
   z-index: 1;
   width: min(128vmin, 1460px);
   height: auto;
@@ -35,6 +51,8 @@
   transform-origin: center;
   pointer-events: none;
   opacity: 0.4;
+  backdrop-filter: blur(2px) saturate(1.08);
+  -webkit-backdrop-filter: blur(1px) saturate(1.08);
 }
 
 .explorer-veil {
@@ -51,7 +69,7 @@
   position: absolute;
   inset: 0;
   z-index: 3;
-  perspective-origin: 50% var(--anchor-y, 46%);
+  perspective-origin: var(--anchor-x, 50%) var(--anchor-y, 50%);
   transform-style: preserve-3d;
   pointer-events: none;
 }
@@ -59,7 +77,7 @@
 .explorer-anchor {
   position: absolute;
   left: 50%;
-  top: var(--anchor-y, 46%);
+  top: var(--anchor-y, 50%);
   z-index: 3;
   width: var(--center);
   pointer-events: none;
@@ -140,51 +158,46 @@
 
 .explorer-actions {
   position: absolute;
-  top: 22px;
-  right: 22px;
+  top: 92px;
+  right: 36px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
 }
 
-.explorer-done {
-  height: 42px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: 999px;
-  background: #fff;
-  color: var(--groow-blue);
-  box-shadow: 0 8px 20px rgba(40, 60, 90, 0.08);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.explorer-done:focus-visible {
-  outline: 2px solid var(--groow-blue);
-  outline-offset: 3px;
+.explorer-hub {
+  position: absolute;
+  left: var(--anchor-x, 50%);
+  top: var(--anchor-y, 50%);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: max-content;
+  max-width: min(220px, calc(100% - 48px));
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .explorer-modes {
-  position: absolute;
-  top: 22px;
-  left: 50%;
+  position: relative;
   display: flex;
-  gap: 6px;
-  transform: translateX(-50%);
+  gap: 4px;
+  pointer-events: auto;
 }
 
 .explorer-modes button {
-  height: 34px;
-  padding: 0 12px;
+  height: 28px;
+  padding: 0 10px;
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
   color: #1c1c1c;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -195,12 +208,10 @@
 }
 
 .explorer-added {
-  position: absolute;
-  top: 212px;
-  left: 22px;
   margin: 0;
   color: rgba(28, 28, 28, 0.72);
   font-size: 13px;
+  text-align: right;
 }
 
 .explorer-history {
@@ -289,28 +300,48 @@
 .explorer-hint {
   position: absolute;
   left: 50%;
-  bottom: 28px;
+  bottom: 22px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   transform: translateX(-50%);
-  padding: 8px 14px;
+  padding: 7px 12px 7px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.46);
-  color: rgba(28, 28, 28, 0.72);
+  background: rgba(255, 255, 255, 0.5);
+  color: rgba(28, 28, 28, 0.64);
   font-size: 13px;
   letter-spacing: 0.01em;
   white-space: nowrap;
   pointer-events: none;
+  opacity: 1;
   transition: opacity 280ms ease;
 }
 
-.immersive-explorer.is-scrolled .explorer-hint {
+.explorer-hint[data-hidden="true"] {
   opacity: 0;
+}
+
+.explorer-hint__icon {
+  display: grid;
+  place-items: center;
+  color: rgba(28, 28, 28, 0.55);
+}
+
+.explorer-hint__icon svg {
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .float-token {
   position: absolute;
-  left: 50%;
-  top: var(--anchor-y, 46%);
+  left: var(--anchor-x, 50%);
+  top: var(--anchor-y, 50%);
   margin: 0;
   padding: 0;
   border: 0;
@@ -346,8 +377,7 @@
 
 .float-token__float {
   display: block;
-  animation: token-float 8.5s ease-in-out infinite;
-  animation-delay: var(--delay, 0s);
+  transform-origin: center center;
 }
 
 .float-token img {
@@ -425,14 +455,15 @@
 }
 
 .immersive-explorer .activity-filter {
-  top: calc(var(--anchor-y, 46%) + (var(--center, 232px) / 2) + 14px);
+  position: relative;
+  top: auto;
   right: auto;
   bottom: auto;
-  left: 50%;
-  width: max-content;
-  max-width: calc(100% - 48px);
+  left: auto;
+  width: min(210px, calc(100vw - 48px));
+  max-width: 100%;
   max-height: none;
-  transform: translateX(-50%);
+  transform: none;
   align-items: center;
   gap: 8px;
   padding: 0;
@@ -443,11 +474,64 @@
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  z-index: 8;
+  z-index: 1;
+}
+
+.immersive-explorer .activity-filter--icon {
+  width: max-content;
+}
+
+.immersive-explorer .activity-filter__launch {
+  width: 36px;
+  height: 36px;
+}
+
+.immersive-explorer .activity-filter__launch img {
+  width: 15px;
+  height: 15px;
+}
+
+.immersive-explorer .activity-filter__row {
+  width: 100%;
 }
 
 .immersive-explorer .activity-filter__search {
-  width: min(240px, 68vw);
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 4px 10px;
+  border-radius: 15px;
+  gap: 6px;
+}
+
+.immersive-explorer .activity-filter__search input {
+  font-size: 12px;
+}
+
+.immersive-explorer .activity-filter__icon {
+  width: 13px;
+  height: 13px;
+}
+
+.immersive-explorer .activity-filter__close {
+  width: 26px;
+  height: 26px;
+}
+
+.immersive-explorer .phase-pill {
+  padding: 3px 9px;
+  border-width: 1.25px;
+  font-size: 11px;
+}
+
+.immersive-explorer .activity-filter__pills {
+  gap: 6px;
+}
+
+.immersive-explorer .activity-filter__empty {
+  align-items: center;
+  text-align: center;
 }
 
 .immersive-explorer .activity-filter__phases {
@@ -493,42 +577,25 @@
   }
 }
 
-@keyframes token-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-7px);
-  }
-}
-
 @media (max-width: 760px) {
   .explorer-preview {
     width: 210px;
     height: 126px;
   }
 
-  .explorer-added {
-    top: 158px;
-  }
-
   .explorer-hint {
-    top: auto;
-    bottom: calc(30vh + 16px);
+    bottom: 16px;
     font-size: 12px;
   }
 
-  .immersive-explorer .activity-filter {
-    top: calc(var(--anchor-y, 36%) + (var(--center, 112px) / 2) + 10px);
-    gap: 8px;
+  .explorer-hub {
+    max-width: min(200px, calc(100% - 32px));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .explorer-anchor img,
-  .explorer-preview,
-  .float-token__float {
+  .explorer-preview {
     animation: none;
   }
 }

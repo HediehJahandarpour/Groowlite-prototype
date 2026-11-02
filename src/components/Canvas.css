@@ -17,11 +17,23 @@
   cursor: grabbing;
 }
 
-.canvas__grid,
-.canvas__world {
+.canvas__world,
+.canvas__atmosphere {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+.canvas--locked,
+.canvas--locked.canvas--pan-ready {
+  cursor: default;
+}
+
+/* Same glass as the explorer, sat behind the process so the chain stays sharp. */
+.canvas__atmosphere.explorer-glass {
+  opacity: var(--atmosphere, 0);
+  backdrop-filter: blur(calc(16px * var(--atmosphere, 0))) saturate(1.88);
+  -webkit-backdrop-filter: blur(calc(12px * var(--atmosphere, 0))) saturate(1.12);
 }
 
 .canvas__world {

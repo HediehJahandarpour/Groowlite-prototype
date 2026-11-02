@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { ChevronUp } from "lucide-react";
 import { activityInfoFor, bestForLabel } from "../../data/activityInfo";
+import { phaseInfoFor } from "../../data/phaseInfo";
 
 const GAP = 8;
 const MARGIN = 8;
@@ -48,14 +49,18 @@ export function ExplorerTokenCard({ id, anchor, viewport }: ExplorerTokenCardPro
     return () => cancelAnimationFrame(frame);
   }, [anchor, viewport]);
 
-  const copy = activityInfoFor(id);
+  const activity = activityInfoFor(id);
+  const phase = phaseInfoFor(id);
+  const copy = activity
+    ? { bestFor: bestForLabel(activity.bestFor), whenToUse: activity.whenToUse }
+    : phase;
   if (!copy) return null;
 
   return createPortal(
     <div ref={cardRef} className="explorer-token-card" role="tooltip">
       <ul className="explorer-token-card__list">
         <li>
-          <strong>Best for:</strong> {bestForLabel(copy.bestFor)}
+          <strong>Best for:</strong> {copy.bestFor}
         </li>
         <li>
           <strong>When to use?</strong> {copy.whenToUse}

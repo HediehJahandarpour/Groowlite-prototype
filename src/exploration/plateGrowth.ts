@@ -5,7 +5,7 @@
  * and finishes larger than the inner plate.
  */
 export const PLATE_GROWTH = {
-  start: 0.46,
+  start: 0.56,
   outerEnd: 1.22,
 } as const;
 

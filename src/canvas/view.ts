@@ -1,5 +1,3 @@
-import type { CSSProperties } from "react";
-
 /** Camera for the workspace. Process tokens will use this same view later. */
 export type CanvasView = {
   x: number;
@@ -9,7 +7,6 @@ export type CanvasView = {
 
 export const MIN_ZOOM = 0.25;
 export const MAX_ZOOM = 2.5;
-export const GRID_SIZE = 28;
 
 export const INITIAL_VIEW: CanvasView = {
   x: 0,
@@ -49,18 +46,6 @@ export function zoomAtPoint(
 
 export function worldTransform(view: CanvasView): string {
   return `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.scale})`;
-}
-
-/** Screen-space dots locked to the same camera as the world layer. */
-export function gridStyle(view: CanvasView): CSSProperties {
-  const spacing = GRID_SIZE * view.scale;
-  const radius = Math.max(0.45, Math.min(1.1, 0.65 * view.scale));
-
-  return {
-    backgroundImage: `radial-gradient(circle, var(--dot) ${radius}px, transparent ${radius + 0.4}px)`,
-    backgroundSize: `${spacing}px ${spacing}px`,
-    backgroundPosition: `${view.x - spacing / 2}px ${view.y - spacing / 2}px`,
-  };
 }
 
 export function screenToWorld(view: CanvasView, localX: number, localY: number) {

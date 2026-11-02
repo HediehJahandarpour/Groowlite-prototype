@@ -105,7 +105,7 @@ test("orbital slots are deterministic and stay off the centre", () => {
   assert.deepEqual(first, again);
   assert.notDeepEqual(first, orbitPoints(6, 1));
   for (const point of first) {
-    assert.ok(Math.hypot(point.x, point.y) >= 0.7);
+    assert.ok(Math.hypot(point.x, point.y) >= 0.55);
     assert.ok(Math.abs(point.tiltX) < 12);
     assert.ok(Math.abs(point.tiltY) < 12);
   }

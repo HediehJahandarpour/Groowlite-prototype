@@ -1,13 +1,20 @@
 .app-shell {
-  display: flex;
-  flex-direction: column;
+  position: relative;
   height: 100%;
   min-height: 0;
   background: var(--canvas-bg);
 }
 
 .workspace {
-  position: relative;
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
+}
+
+.app-shell--exploring .zoom,
+.app-shell--exploring .history,
+.app-shell--exploring .token-toolbar,
+.app-shell--exploring .token-selection,
+.app-shell--exploring .token-grip {
+  opacity: calc(1 - var(--atmosphere, 0));
+  pointer-events: none;
 }

@@ -11,6 +11,47 @@
   z-index: 4;
 }
 
+@property --split {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --shift-x {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --shift-y {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --shift-scale {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+
+@property --shift-opacity {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+
+.process-token-shift {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  transform:
+    translate(calc(var(--split) * var(--shift-x) * 1px), calc(var(--split) * var(--shift-y) * 1px))
+    scale(calc(1 + (var(--shift-scale) - 1) * var(--split)));
+  opacity: calc(1 + (var(--shift-opacity) - 1) * var(--split));
+}
+
 .process-token {
   position: absolute;
   top: 0;

@@ -8,6 +8,12 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { worldToScreen, type CanvasView } from "../canvas/view";
+import type { ScreenRect } from "../exploration/cameraFocus";
+import {
+  nextPlaceholder,
+  plusPoint,
+  seamPoint,
+} from "../process/insertionPoint";
 import { imageToWorld } from "../process/slotLayout";
 import {
   TOKEN_CATALOG,
@@ -28,6 +34,8 @@ import type {
 } from "../process/processTypes";
 import { ImmersiveTokenExplorer } from "./exploration/ImmersiveTokenExplorer";
 import "./InsertionMenu.css";
+
+const EMPTY_ZONES: ScreenRect[] = [];
 
 type InsertionMenuProps = {
   placed: PlacedToken[];
@@ -61,6 +69,10 @@ type InsertionMenuProps = {
   switchOrigin: Point | null;
   /** Hide the add controls while a token is being reordered. */
   suspended?: boolean;
+  explorationActive?: boolean;
+  explorationAtmosphere?: number;
+  explorationZones?: ScreenRect[];
+  atmosphereHost?: HTMLElement | null;
 };
 
 /** Temporary list, in world pixels, to the right of the blue pentagon. */
@@ -102,6 +114,10 @@ export function InsertionMenu({
   placeholderOpen,
   switchOrigin,
   suspended = false,
+  explorationActive = false,
+  explorationAtmosphere = 0,
+  explorationZones = EMPTY_ZONES,
+  atmosphereHost = null,
 }: InsertionMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const seamRef = useRef<HTMLDivElement>(null);
@@ -129,7 +145,7 @@ export function InsertionMenu({
     ) {
       return;
     }
-    const id = window.setTimeout(() => setExplorerMode(null), 480);
+    const id = window.setTimeout(() => setExplorerMode(null), 1000);
     return () => window.clearTimeout(id);
   }, [category]);
 
@@ -167,6 +183,10 @@ export function InsertionMenu({
           ),
         );
       if (onFilter) return;
+      const onChrome =
+        target instanceof Element &&
+        Boolean(target.closest(".header, .toolbar"));
+      if (onChrome) return;
       const onCanvas =
         target instanceof Element && Boolean(target.closest(".canvas"));
       if (!onCanvas) {
@@ -279,7 +299,7 @@ export function InsertionMenu({
 
   return (
     <div className="insertion-layer" ref={rootRef} onPointerDown={stopPointer}>
-      {seamHost && !suspended
+      {seamHost && !suspended && !explorationActive
         ? createPortal(
             <div
               className="insertion-seams"
@@ -309,6 +329,9 @@ export function InsertionMenu({
           onUndo={onUndo}
           onRedo={onRedo}
           onClose={onClose}
+          atmosphere={explorationAtmosphere}
+          zones={explorationZones}
+          atmosphereHost={atmosphereHost}
         />
       ) : null}
 
@@ -415,58 +438,3 @@ function menuPose(
   };
 }
 
-/** The empty pentagon that follows the token just placed. */
-function nextPlaceholder(
-  index: number,
-  slots: ProcessSlot[],
-  phaseInStart: boolean,
-): ProcessSlot | null {
-  if (index <= 0) return null;
-  return slots[index - (phaseInStart ? 1 : 0)] ?? null;
-}
-
-/** Slot that feeds the gap. Negative means the gap is the start pentagon's own tip. */
-function chainSlot(index: number, phaseInStart: boolean): number {
-  return phaseInStart ? index - 2 : index - 1;
-}
-
-/** Just past the outgoing edge, so the plus reads as the next place to add. */
-function plusPoint(
-  index: number,
-  start: PlacedToken,
-  slots: ProcessSlot[],
-  phaseInStart: boolean,
-): Point {
-  const point = seamPoint(index, start, slots, phaseInStart);
-  const slotIndex = chainSlot(index, phaseInStart);
-  const slot = slotIndex < 0 ? slots[0] : slots[slotIndex];
-  if (!slot) return point;
-  const dx = slotIndex < 0 ? slot.x - slot.entry.x : slot.exit.x - slot.x;
-  const dy = slotIndex < 0 ? slot.y - slot.entry.y : slot.exit.y - slot.y;
-  const length = Math.hypot(dx, dy) || 1;
-  return {
-    x: point.x + (dx / length) * 28,
-    y: point.y + (dy / length) * 28,
-  };
-}
-
-function seamPoint(
-  index: number,
-  start: PlacedToken,
-  slots: ProcessSlot[],
-  phaseInStart: boolean,
-): Point {
-  if (index <= 0) {
-    const anchor = geometryFor(start.token).anchor;
-    return imageToWorld(
-      BLUE_CENTER,
-      anchor,
-      { x: start.x, y: start.y },
-      start.heading,
-      start.scale,
-    );
-  }
-  const slotIndex = chainSlot(index, phaseInStart);
-  if (slotIndex < 0) return slots[0].entry;
-  return slots[slotIndex].exit;
-}

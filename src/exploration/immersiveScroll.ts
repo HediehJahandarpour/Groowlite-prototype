@@ -39,8 +39,14 @@ export function useImmersiveScroll(
   maxRef.current = max;
   const listeners = useRef(new Set<(value: number) => void>());
 
-  const generation = `${active ? "open" : "closed"}|${resetKey}|${max}`;
+  const generation = `${resetKey}|${max}`;
   const seenGeneration = useRef(generation);
+  const wasActive = useRef(active);
+  if (active && !wasActive.current) {
+    shown.current = 0;
+    target.current = 0;
+  }
+  wasActive.current = active;
   if (seenGeneration.current !== generation) {
     seenGeneration.current = generation;
     shown.current = 0;

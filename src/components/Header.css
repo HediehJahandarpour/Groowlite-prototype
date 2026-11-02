@@ -3,9 +3,15 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  height: var(--header-height);
-  padding: 0 52px 0 68px;
-  background: var(--header-bg);
+  position: absolute;
+  z-index: 50;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: auto;
+  padding: 36px 36px 16px 108px;
+  background: transparent;
+  pointer-events: none;
   flex-shrink: 0;
 }
 
@@ -21,7 +27,8 @@
   margin: 0;
   border: none;
   background: transparent;
-  color: var(--ink);
+  color: var(--groow-blue);
+  pointer-events: auto;
   font-size: 24px;
   font-weight: 400;
   line-height: 24px;
@@ -38,7 +45,7 @@
 }
 
 .header__name:hover {
-  color: #111;
+  color: #061fb0;
 }
 
 .header__name:focus-visible,
@@ -68,6 +75,7 @@
   background: transparent;
   color: var(--groow-blue);
   cursor: pointer;
+  pointer-events: auto;
   flex-shrink: 0;
   transition: background-color 160ms ease;
 }
@@ -91,6 +99,7 @@
   line-height: 16px;
   letter-spacing: 0;
   box-shadow: 0 8px 16px rgba(8, 46, 239, 0.28);
+  pointer-events: auto;
   flex-shrink: 0;
 }
 

@@ -7,12 +7,12 @@ import { PHASE_EXPLANATION } from "./recommendationConfig";
 /**
  * Display labels for the filter pills.
  * Internal ids stay the process ids. Discovery is `discover`.
- * Shape is the pink phase, stored as `share`.
+ * Share is the pink phase.
  */
 export const PHASE_FILTERS: readonly { id: PhaseId; label: string; color: string }[] = [
   { id: "discover", label: "Discovery", color: "#4ba570" },
   { id: "understand", label: "Understand", color: "#348bcd" },
-  { id: "share", label: "Shape", color: "#bd3b60" },
+  { id: "share", label: "Share", color: "#bd3b60" },
   { id: "design", label: "Design", color: "#f2c649" },
   { id: "make", label: "Make", color: "#ec754f" },
 ];

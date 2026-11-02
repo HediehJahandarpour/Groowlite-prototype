@@ -1,6 +1,10 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
+import gsap from "gsap";
 import type { CanvasView } from "../canvas/view";
+import { EXPLORATION } from "../exploration/explorationConfig";
+import type { ScreenRect } from "../exploration/cameraFocus";
+import type { ProcessSplit, SplitPose } from "../exploration/processSplit";
 import { DRAG } from "../process/dragConfig";
 import type { DragPose } from "../process/dragPose";
 import { slotPolygon } from "../process/dragTargets";
@@ -14,6 +18,9 @@ import { InsertionMenu } from "./InsertionMenu";
 import { ProcessTokenView } from "./ProcessToken";
 import { TokenChrome } from "./TokenChrome";
 import "./ProcessCanvas.css";
+
+const EMPTY_ZONES: ScreenRect[] = [];
+const IDENTITY_SHIFT: SplitPose = { x: 0, y: 0, scale: 1, opacity: 1 };
 
 type ProcessCanvasProps = {
   tokens: ProcessToken[];
@@ -40,6 +47,12 @@ type ProcessCanvasProps = {
   onSwitch: () => void;
   onReorder: (tokens: ProcessToken[]) => void;
   onPanBy: (dx: number, dy: number) => void;
+  explorationActive?: boolean;
+  explorationAtmosphere?: number;
+  explorationSplit?: ProcessSplit | null;
+  /** Drives the open and close of the visual split. Stays false while the camera returns. */
+  splitOpen?: boolean;
+  atmosphereHost?: HTMLElement | null;
 };
 
 export function ProcessCanvas({
@@ -67,6 +80,11 @@ export function ProcessCanvas({
   onSwitch,
   onReorder,
   onPanBy,
+  explorationActive = false,
+  explorationAtmosphere = 0,
+  explorationSplit = null,
+  splitOpen = false,
+  atmosphereHost = null,
 }: ProcessCanvasProps) {
   const {
     dragging,
@@ -106,6 +124,68 @@ export function ProcessCanvas({
     () => new Map(displayTokens.map((token) => [token.id, token])),
     [displayTokens],
   );
+  const layerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const node = layerRef.current;
+    if (!node) return;
+    node.classList.add("process-layer--splitting");
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const proxy = {
+      value: Number.parseFloat(node.style.getPropertyValue("--split")) || 0,
+    };
+    const tween = gsap.to(proxy, {
+      value: splitOpen ? 1 : 0,
+      duration: reduced ? 0 : EXPLORATION.transitionDuration,
+      ease: "power2.inOut",
+      overwrite: true,
+      onUpdate: () => node.style.setProperty("--split", proxy.value.toFixed(4)),
+      onComplete: () => {
+        node.style.setProperty("--split", splitOpen ? "1" : "0");
+        if (splitOpen) node.classList.remove("process-layer--splitting");
+      },
+    });
+    return () => {
+      tween.kill();
+    };
+  }, [splitOpen]);
+
+  useLayoutEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    const poses = explorationSplit?.poses ?? {};
+    const immediate =
+      !splitOpen || layer.classList.contains("process-layer--splitting");
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const tweens: gsap.core.Tween[] = [];
+    layer.querySelectorAll<HTMLElement>(".process-token-shift").forEach((node) => {
+      const id = node.querySelector(".process-token")?.getAttribute("data-token-id");
+      if (!id) return;
+      const pose = poses[id] ?? IDENTITY_SHIFT;
+      if (immediate || reduced) {
+        gsap.killTweensOf(node);
+        writeShift(node, pose);
+        return;
+      }
+      const from = readShift(node);
+      if (sameShift(from, pose)) return;
+      const proxy = { ...from };
+      tweens.push(
+        gsap.to(proxy, {
+          x: pose.x,
+          y: pose.y,
+          scale: pose.scale,
+          opacity: pose.opacity,
+          duration: 0.72,
+          ease: "power2.inOut",
+          onUpdate: () => writeShift(node, proxy),
+        }),
+      );
+    });
+    return () => {
+      tweens.forEach((tween) => tween.kill());
+    };
+  }, [explorationSplit, splitOpen]);
 
   function showHover(id: string) {
     window.clearTimeout(hoverTimer.current);
@@ -125,36 +205,39 @@ export function ProcessCanvas({
 
   return (
     <div
+      ref={layerRef}
       className={dragging ? "process-layer process-layer--dragging" : "process-layer"}
       style={{ ["--reflow-ms" as string]: `${DRAG.reflowMs}ms` }}
     >
       {placed.map((item) => {
         if (hidden.has(item.token.id)) return null;
+        if (explorationActive && item.token.type === "end") return null;
         const dragId = dragTargetId(item, seated);
         return (
-          <ProcessTokenView
-            key={item.token.id}
-            placed={item}
-            hidePentagon={item.token.type === "start"}
-            pentagonImage={
-              item.token.type === "start" && !seatedDragged ? pentagonImage : undefined
-            }
-            pentagonArt={
-              item.token.type === "start" && !seatedDragged ? pentagonArt : undefined
-            }
-            seatedTurn={item.token.type === "start" ? (seated?.turn ?? 0) : 0}
-            selected={
-              item.token.id === selectedId ||
-              (item.token.type === "start" && seated?.id === selectedId)
-            }
-            selectLabel={
-              item.token.type === "start" ? seated?.label : undefined
-            }
-            onSelect={dragId ? () => onSelect(dragId) : undefined}
-            onPress={dragId ? (event) => beginGesture(dragId, event) : undefined}
-            onHover={dragId ? () => showHover(dragId) : undefined}
-            onHoverEnd={dragId ? () => hideHover(dragId) : undefined}
-          />
+          <div key={item.token.id} className="process-token-shift">
+            <ProcessTokenView
+              placed={item}
+              hidePentagon={item.token.type === "start"}
+              pentagonImage={
+                item.token.type === "start" && !seatedDragged ? pentagonImage : undefined
+              }
+              pentagonArt={
+                item.token.type === "start" && !seatedDragged ? pentagonArt : undefined
+              }
+              seatedTurn={item.token.type === "start" ? (seated?.turn ?? 0) : 0}
+              selected={
+                item.token.id === selectedId ||
+                (item.token.type === "start" && seated?.id === selectedId)
+              }
+              selectLabel={
+                item.token.type === "start" ? seated?.label : undefined
+              }
+              onSelect={dragId ? () => onSelect(dragId) : undefined}
+              onPress={dragId ? (event) => beginGesture(dragId, event) : undefined}
+              onHover={dragId ? () => showHover(dragId) : undefined}
+              onHoverEnd={dragId ? () => hideHover(dragId) : undefined}
+            />
+          </div>
         );
       })}
       {dragging
@@ -237,6 +320,10 @@ export function ProcessCanvas({
         placeholderOpen={gapOpen && !dragging}
         switchOrigin={switchOrigin}
         suspended={dragging}
+        explorationActive={explorationActive}
+        explorationAtmosphere={explorationAtmosphere}
+        explorationZones={explorationSplit?.zones ?? EMPTY_ZONES}
+        atmosphereHost={atmosphereHost}
       />
     </div>
   );
@@ -358,6 +445,32 @@ function centroidOf(points: readonly Point[]): Point {
     x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
     y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
   };
+}
+
+function readShift(node: HTMLElement): SplitPose {
+  const style = getComputedStyle(node);
+  return {
+    x: Number.parseFloat(style.getPropertyValue("--shift-x")) || 0,
+    y: Number.parseFloat(style.getPropertyValue("--shift-y")) || 0,
+    scale: Number.parseFloat(style.getPropertyValue("--shift-scale")) || 1,
+    opacity: Number.parseFloat(style.getPropertyValue("--shift-opacity")) || 1,
+  };
+}
+
+function writeShift(node: HTMLElement, pose: SplitPose) {
+  node.style.setProperty("--shift-x", String(pose.x));
+  node.style.setProperty("--shift-y", String(pose.y));
+  node.style.setProperty("--shift-scale", String(pose.scale));
+  node.style.setProperty("--shift-opacity", String(pose.opacity));
+}
+
+function sameShift(left: SplitPose, right: SplitPose) {
+  return (
+    Math.abs(left.x - right.x) < 0.5 &&
+    Math.abs(left.y - right.y) < 0.5 &&
+    Math.abs(left.scale - right.scale) < 0.001 &&
+    Math.abs(left.opacity - right.opacity) < 0.001
+  );
 }
 
 function phaseArt(token: ProcessToken) {

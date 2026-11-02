@@ -99,15 +99,15 @@ export function ringAngles(count: number, spin: number): number[] {
 
 /**
  * Strongest colour of each phase wash. The rings fade from this toward white.
- * Neutral, before any phase is placed, uses the understand blue.
+ * Neutral, before any phase is placed, uses the understand colour.
  */
 export const PHASE_COLOR: Record<PhaseId | "neutral", string> = {
-  neutral: "#5AA7EC",
-  understand: "#5AA7EC",
-  discover: "#6ACC8C",
-  design: "#F5D556",
-  make: "#FF904F",
-  share: "#FD387E",
+  neutral: "#7AABCD",
+  understand: "#7AABCD",
+  discover: "#A5C6A3",
+  design: "#EED584",
+  make: "#EBAB7F",
+  share: "#EEBDC2",
 };
 
 export type Rgb = { r: number; g: number; b: number };

@@ -17,6 +17,8 @@ type ActivityFilterPanelProps = {
   open: boolean;
   /** Starts as a search icon. The field and phase filters open from that icon. */
   collapsible?: boolean;
+  /** Draw in place. The explorer centres this on the gradient instead of portaling it. */
+  embedded?: boolean;
   viewport: HTMLElement | null;
   query: string;
   phases: readonly PhaseId[];
@@ -33,6 +35,7 @@ function stopCanvas(event: ReactPointerEvent | ReactWheelEvent) {
 export function ActivityFilterPanel({
   open,
   collapsible = false,
+  embedded = false,
   viewport,
   query,
   phases,
@@ -83,9 +86,9 @@ export function ActivityFilterPanel({
     };
   }, [open, viewport]);
 
-  if (!open || !viewport) return null;
+  if (!open || (!embedded && !viewport)) return null;
 
-  return createPortal(
+  const panel = (
     <aside
       ref={panelRef}
       className={
@@ -154,9 +157,11 @@ export function ActivityFilterPanel({
           <img src={searchIcon} alt="" width={18} height={18} />
         </button>
       )}
-    </aside>,
-    viewport,
+    </aside>
   );
+
+  if (embedded || !viewport) return panel;
+  return createPortal(panel, viewport);
 }
 
 export function ActivitySearchInput({

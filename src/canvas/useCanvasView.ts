@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import gsap from "gsap";
 import { clampZoom, INITIAL_VIEW, zoomAtPoint, type CanvasView } from "./view";
 
 /**
@@ -33,6 +34,7 @@ export function useCanvasView() {
   const targetRef = useRef<ZoomTarget | null>(null);
   const rafRef = useRef(0);
   const lastTimeRef = useRef(0);
+  const flightRef = useRef<gsap.core.Tween | null>(null);
 
   const commit = useCallback((next: CanvasView) => {
     viewRef.current = next;
@@ -127,9 +129,64 @@ export function useCanvasView() {
     [commit, step, stopZoom],
   );
 
+  const stopFlight = useCallback(() => {
+    flightRef.current?.kill();
+    flightRef.current = null;
+  }, []);
+
   useEffect(() => {
-    return () => stopZoom();
-  }, [stopZoom]);
+    return () => {
+      stopZoom();
+      stopFlight();
+    };
+  }, [stopFlight, stopZoom]);
+
+  const flyTo = useCallback(
+    (
+      next: CanvasView,
+      duration: number,
+      onProgress?: (progress: number) => void,
+    ) => {
+      stopZoom();
+      stopFlight();
+      const from = viewRef.current;
+      const to = {
+        x: next.x,
+        y: next.y,
+        scale: clampZoom(next.scale),
+      };
+      if (duration <= 0 || prefersReducedMotion()) {
+        commit(to);
+        onProgress?.(1);
+        return;
+      }
+      const proxy = { t: 0 };
+      const fromLog = Math.log(from.scale);
+      const toLog = Math.log(to.scale);
+      flightRef.current = gsap.to(proxy, {
+        t: 1,
+        duration,
+        ease: "power2.inOut",
+        onUpdate: () => {
+          const t = proxy.t;
+          commit({
+            x: from.x + (to.x - from.x) * t,
+            y: from.y + (to.y - from.y) * t,
+            scale: Math.exp(fromLog + (toLog - fromLog) * t),
+          });
+          onProgress?.(t);
+        },
+        onComplete: () => {
+          flightRef.current = null;
+          commit(to);
+          onProgress?.(1);
+        },
+      });
+    },
+    [commit, stopFlight, stopZoom],
+  );
+
+  const getView = useCallback(() => viewRef.current, []);
 
   const panBy = useCallback(
     (dx: number, dy: number) => {
@@ -188,5 +245,15 @@ export function useCanvasView() {
     [commit, stopZoom],
   );
 
-  return { view, panBy, zoomBy, zoomTo, zoomByPercent, resetZoom, adjustView };
+  return {
+    view,
+    panBy,
+    zoomBy,
+    zoomTo,
+    zoomByPercent,
+    resetZoom,
+    adjustView,
+    flyTo,
+    getView,
+  };
 }

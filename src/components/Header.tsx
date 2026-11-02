@@ -1,4 +1,4 @@
-import { Diamond, Download } from "lucide-react";
+import { ChevronsUpDown, Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import "./Header.css";
 
@@ -77,7 +77,7 @@ export function Header() {
           onMouseDown={(event) => event.preventDefault()}
           onClick={beginEdit}
         >
-          <Diamond size={14} strokeWidth={1.75} />
+          <ChevronsUpDown size={16} strokeWidth={2.25} />
         </button>
       </div>
       <button type="button" className="header__export" disabled>

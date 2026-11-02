@@ -58,7 +58,7 @@ test("filter pills use the existing phase ids and the Figma labels", () => {
   );
   assert.deepEqual(
     PHASE_FILTERS.map((phase) => phase.label),
-    ["Discovery", "Understand", "Shape", "Design", "Make"],
+    ["Discovery", "Understand", "Share", "Design", "Make"],
   );
   for (const phase of PHASE_FILTERS) assert.ok(PHASES.includes(phase.id));
 });

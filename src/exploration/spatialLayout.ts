@@ -17,8 +17,13 @@ const CLOUD: ReadonlyArray<readonly [number, number]> = [
   [-0.48, -0.08],
 ];
 
-const MIN_RADIUS = 0.7;
-const MAX_RADIUS = 1.06;
+/**
+ * Irregular halo around the gradient.
+ * The band is wide enough that tokens keep different radii, and tight
+ * enough that the field stays inside the rings.
+ */
+const MIN_RADIUS = 0.55;
+const MAX_RADIUS = 1;
 const MIN_SEPARATION = 0.62;
 
 export type OrbitPoint = {
@@ -61,8 +66,10 @@ function clampRadius(x: number, y: number): { x: number; y: number } {
 function ring(count: number, groupIndex: number): { x: number; y: number }[] {
   const spin = groupIndex * 0.66 - Math.PI / 2;
   return Array.from({ length: count }, (_, index) => {
-    const angle = spin + (index / count) * Math.PI * 2;
-    return { x: Math.cos(angle) * 0.96, y: Math.sin(angle) * 0.96 };
+    const wobble = ((index * 3 + groupIndex) % 5) / 4;
+    const angle = spin + (index / count) * Math.PI * 2 + (wobble - 0.5) * 0.28;
+    const radius = 0.7 + wobble * 0.1;
+    return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
   });
 }
 
@@ -84,24 +91,27 @@ export function orbitPoints(
   const turn = groupIndex * 0.66;
   const cos = Math.cos(turn);
   const sin = Math.sin(turn);
-  const scale = 0.94 + (groupIndex % 3) * 0.04;
-  const points = count >= 8 ? ring(count, groupIndex) : Array.from({ length: count }, (_, index) => {
+  const scale = 0.9 + (groupIndex % 3) * 0.03;
+  const points = Array.from({ length: count }, (_, index) => {
     const source = CLOUD[(index + groupIndex * 3) % CLOUD.length];
     const scaledX = source[0] * scale;
     const scaledY = source[1] * scale;
-    const turned = clampRadius(
+    return clampRadius(
       scaledX * cos - scaledY * sin,
       scaledX * sin + scaledY * cos,
     );
-    return turned;
   });
 
   if (groupIndex === 0) {
     for (let index = 0; index < points.length; index += 1) {
       const point = points[index];
       if (point.y < 0.32 || Math.abs(point.x) > 0.46) continue;
-      const side = point.x === 0 ? (index % 2 === 0 ? -1 : 1) : Math.sign(point.x);
-      points[index] = clampRadius(side * Math.max(Math.abs(point.x), 0.8), Math.min(point.y, 0.7));
+      const side =
+        point.x === 0 ? (index % 2 === 0 ? -1 : 1) : Math.sign(point.x);
+      points[index] = clampRadius(
+        side * Math.max(Math.abs(point.x), 0.64),
+        Math.min(point.y, 0.62),
+      );
     }
   }
 
@@ -149,7 +159,9 @@ export function placeCandidates(
   const seen = new Set<string>();
   const placed: SpatialCandidate[] = [];
   groups.forEach((group, groupIndex) => {
-    const layout = group.every((item) => item.type === "phase") ? "ring" : "cloud";
+    const layout = group.every((item) => item.type === "phase")
+      ? "ring"
+      : "cloud";
     const points = orbitPoints(group.length, groupIndex, layout);
     group.forEach((item, index) => {
       if (seen.has(item.id)) return;

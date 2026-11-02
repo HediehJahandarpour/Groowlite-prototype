@@ -4,7 +4,7 @@ import type {
   RefObject,
 } from "react";
 import { useEffect, useRef, useState } from "react";
-import { gridStyle, worldTransform, type CanvasView } from "../canvas/view";
+import { worldTransform, type CanvasView } from "../canvas/view";
 import "./Canvas.css";
 
 type CanvasProps = {
@@ -21,6 +21,11 @@ type CanvasProps = {
   onBackgroundClick?: () => void;
   /** SVG process tokens, in world coordinates, can be passed here later. */
   children?: ReactNode;
+  /** Blocks pan and zoom while the exploration camera owns the view. */
+  locked?: boolean;
+  /** 0–1 opacity of the existing glass atmosphere, behind the process. */
+  atmosphere?: number;
+  atmosphereRef?: (node: HTMLDivElement | null) => void;
 };
 
 function isTypingTarget(target: EventTarget | null) {
@@ -48,12 +53,17 @@ export function Canvas({
   onZoomBy,
   onBackgroundClick,
   children,
+  locked = false,
+  atmosphere = 0,
+  atmosphereRef,
 }: CanvasProps) {
   const [spaceDown, setSpaceDown] = useState(false);
   const [dragging, setDragging] = useState(false);
   const spaceRef = useRef(false);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const gestureRef = useRef<{ x: number; y: number; background: boolean } | null>(null);
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -97,6 +107,7 @@ export function Canvas({
     if (!viewport) return;
 
     function onWheel(event: WheelEvent) {
+      if (lockedRef.current) return;
       if (!(event.ctrlKey || event.metaKey)) return;
       event.preventDefault();
 
@@ -134,7 +145,7 @@ export function Canvas({
   }, [onZoomBy, viewportRef]);
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
+    if (locked || event.button !== 0) return;
     const target = event.target;
     const startedOnControl =
       target instanceof Element &&
@@ -189,7 +200,8 @@ export function Canvas({
 
   const className = [
     "canvas",
-    spaceDown ? "canvas--pan-ready" : "",
+    locked ? "canvas--locked" : "",
+    spaceDown && !locked ? "canvas--pan-ready" : "",
     dragging ? "canvas--panning" : "",
   ]
     .filter(Boolean)
@@ -201,12 +213,17 @@ export function Canvas({
       className={className}
       role="region"
       aria-label="Process canvas"
+      style={{ ["--atmosphere" as string]: atmosphere }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
-      <div className="canvas__grid" style={gridStyle(view)} />
+      <div
+        ref={atmosphereRef}
+        className="canvas__atmosphere explorer-glass"
+        style={{ ["--atmosphere" as string]: atmosphere }}
+      />
       <div
         className="canvas__world"
         style={{ transform: worldTransform(view) }}

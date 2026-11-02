@@ -1,9 +1,8 @@
 .toolbar {
   position: absolute;
-  z-index: 2;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+  z-index: 50;
+  left: 20px;
+  top: 26px;
   display: flex;
   flex-direction: column;
   gap: 8px;

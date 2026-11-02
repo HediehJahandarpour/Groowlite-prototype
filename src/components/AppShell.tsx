@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCanvasView } from "../canvas/useCanvasView";
+import { useExplorationCamera } from "../exploration/useExplorationCamera";
 import { removeToken, replaceToken } from "../process/editToken";
 import { insertToken } from "../process/insertToken";
 import { initialProcess } from "../process/processTestData";
@@ -29,7 +30,21 @@ export function AppShell() {
   const [replaceId, setReplaceId] = useState<string | null>(null);
   const [gapOpen, setGapOpen] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const { view, panBy, zoomBy, zoomByPercent, resetZoom } = useCanvasView();
+  const [atmosphereHost, setAtmosphereHost] = useState<HTMLDivElement | null>(null);
+  const { view, panBy, zoomBy, zoomByPercent, resetZoom, flyTo, getView } =
+    useCanvasView();
+  const exploring =
+    category === "phase" || category === "activity" || category === "checkpoint";
+  const { atmosphere, split } = useExplorationCamera({
+    active: exploring,
+    tokens,
+    insertionIndex: activeInsertion,
+    replaceId,
+    viewportRef,
+    getView,
+    flyTo,
+  });
+  const canvasLocked = exploring || atmosphere > 0;
   const [sessionAdds, setSessionAdds] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -239,7 +254,12 @@ export function AppShell() {
   }
 
   return (
-    <div className="app-shell">
+    <div
+      className={
+        canvasLocked ? "app-shell app-shell--exploring" : "app-shell"
+      }
+      style={{ ["--atmosphere" as string]: atmosphere }}
+    >
       <Header />
       <main className="workspace">
         <Canvas
@@ -248,6 +268,9 @@ export function AppShell() {
           onPanBy={panBy}
           onZoomBy={zoomBy}
           onBackgroundClick={clearSelection}
+          locked={canvasLocked}
+          atmosphere={atmosphere}
+          atmosphereRef={setAtmosphereHost}
         >
           <ProcessCanvas
             tokens={tokens}
@@ -274,6 +297,11 @@ export function AppShell() {
             onSwitch={switchSelected}
             onReorder={commitReorder}
             onPanBy={panBy}
+            explorationActive={canvasLocked}
+            explorationAtmosphere={atmosphere}
+            explorationSplit={split}
+            splitOpen={exploring}
+            atmosphereHost={atmosphereHost}
           />
         </Canvas>
         <LeftToolbar tool={tool} onToolChange={setTool} />
