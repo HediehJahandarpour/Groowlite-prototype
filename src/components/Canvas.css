@@ -17,11 +17,25 @@
   cursor: grabbing;
 }
 
+.canvas__grid,
 .canvas__world,
 .canvas__atmosphere {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+.canvas__atmosphere {
+  z-index: 0;
+}
+
+.canvas__grid {
+  z-index: 1;
+  opacity: 0.28;
+}
+
+.canvas__world {
+  z-index: 2;
 }
 
 .canvas--locked,

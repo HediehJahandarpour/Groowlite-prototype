@@ -28,11 +28,11 @@ test("idle floats are deterministic, desynchronised, and stay small", () => {
   const second = idleMotionFor("planning", 1, 0);
   assert.deepEqual(first, again);
   assert.notDeepEqual(first, second);
-  assert.ok(Math.abs(first.y) >= 12 && Math.abs(first.y) <= 20);
-  assert.ok(Math.abs(first.x) <= 6);
-  assert.ok(Math.abs(first.rotationX) <= 4);
-  assert.ok(Math.abs(first.rotationY) <= 4);
-  assert.ok(first.duration >= 2.8 && first.duration <= 4.4);
+  assert.ok(Math.abs(first.y) >= 4 && Math.abs(first.y) <= 8);
+  assert.ok(Math.abs(first.x) <= 2);
+  assert.ok(Math.abs(first.rotationX) <= 1.5);
+  assert.ok(Math.abs(first.rotationY) <= 1.5);
+  assert.ok(first.duration >= 8 && first.duration <= 12);
   assert.ok(first.phase >= 0 && first.phase < 1);
   assert.ok(
     first.phase !== second.phase || first.duration !== second.duration,

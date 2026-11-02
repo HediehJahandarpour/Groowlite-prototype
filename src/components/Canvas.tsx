@@ -4,7 +4,7 @@ import type {
   RefObject,
 } from "react";
 import { useEffect, useRef, useState } from "react";
-import { worldTransform, type CanvasView } from "../canvas/view";
+import { gridStyle, worldTransform, type CanvasView } from "../canvas/view";
 import "./Canvas.css";
 
 type CanvasProps = {
@@ -224,6 +224,7 @@ export function Canvas({
         className="canvas__atmosphere explorer-glass"
         style={{ ["--atmosphere" as string]: atmosphere }}
       />
+      <div className="canvas__grid" style={gridStyle(view)} />
       <div
         className="canvas__world"
         style={{ transform: worldTransform(view) }}

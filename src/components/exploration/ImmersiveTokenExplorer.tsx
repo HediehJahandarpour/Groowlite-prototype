@@ -254,9 +254,9 @@ export function ImmersiveTokenExplorer({
   const motionRef = useRef<ExplorerMotionHandle>(null);
   const showHint =
     open &&
-    !hintDismissed &&
     scrollSpan > 0 &&
-    EXPLORER_MOTION.hint.enabled;
+    EXPLORER_MOTION.hint.enabled &&
+    (frame.mode === "activity" || !hintDismissed);
   const reveal = useRef(0);
   const scrollSpanRef = useRef(scrollSpan);
   scrollSpanRef.current = scrollSpan;
@@ -609,6 +609,7 @@ export function ImmersiveTokenExplorer({
         settle={settle}
         onPick={choose}
         onUserScroll={() => {
+          if (modeRef.current === "activity") return;
           if (scrollSpanRef.current > 0) setHintDismissed(true);
         }}
         viewport={host}

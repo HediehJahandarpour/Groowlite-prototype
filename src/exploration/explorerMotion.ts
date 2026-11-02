@@ -15,14 +15,14 @@ export const EXPLORER_MOTION = {
   idle: {
     enabled: true,
     /** Vertical travel, in px. Each token picks a value in this range. */
-    minY: 12,
-    maxY: 20,
+    minY: 4,
+    maxY: 8,
     /** Horizontal travel, in px, kept smaller than the vertical float. */
-    maxX: 6,
+    maxX: 2,
     /** Rotation on X and Y, in degrees. */
-    maxRotate: 4,
-    minDuration: 2.8,
-    maxDuration: 4.4,
+    maxRotate: 1.5,
+    minDuration: 8,
+    maxDuration: 12,
     /** Wait after scrolling stops before the float returns. */
     resumeDelay: 0.48,
     /** Ease the float back to rest when scrolling begins. */
@@ -65,11 +65,11 @@ export const EXPLORER_MOTION = {
   breath: {
     enabled: true,
     minScale: 1,
-    maxScale: 1.08,
-    minOpacity: 0.72,
+    maxScale: 1.03,
+    minOpacity: 0.9,
     maxOpacity: 1,
     /** Seconds for one half of the cycle. The return takes the same time. */
-    duration: 2.6,
+    duration: 8,
   },
   hint: {
     enabled: true,
