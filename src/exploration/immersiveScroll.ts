@@ -7,6 +7,8 @@ import { clampProgress } from "./depthPose";
  * maxStep caps one wheel event so a notch cannot skip a whole group.
  * lead stops a fast flick from queuing more than about one group ahead.
  * wheelGain converts pixels of wheel travel into group progress.
+ * One full group is 1 / wheelGain pixels. That distance is the
+ * scroll transition length.
  * follow is the share of the remaining distance closed on each animation frame.
  */
 export const IMMERSIVE_SCROLL = {

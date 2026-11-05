@@ -33,8 +33,24 @@ export const PHASE_EXPLANATION = {
 };
 
 /**
- * Activities on each depth layer, closest to the viewer first.
- * The choosable layer holds six tokens. Later layers hold six,
- * and anything left over opens another layer of six.
+ * Fallback buckets matching the Figma radar:
+ * inner ~7 at 130px, middle ~10 at 100px, then an outer ring at 90px.
  */
-export const LAYER_CAPACITIES = [6, 6] as const;
+export const LAYER_CAPACITIES = [7, 14] as const;
+
+/**
+ * Split activities onto three rings when possible:
+ * first 6–7, next 13–14, remainder on the outer ring.
+ */
+export function layerCapacitiesFor(count: number): number[] {
+  const safe = Math.max(0, Math.floor(count));
+  if (safe <= 0) return [...LAYER_CAPACITIES];
+  if (safe <= 7) return [safe];
+  const inner = safe >= 21 ? 7 : 6;
+  const afterInner = safe - inner;
+  // Middle holds up to ~14 on an even circle; spill the rest onto a third.
+  const middle = Math.min(14, afterInner);
+  const outer = afterInner - middle;
+  if (outer <= 0) return [inner, middle];
+  return [inner, middle, outer];
+}

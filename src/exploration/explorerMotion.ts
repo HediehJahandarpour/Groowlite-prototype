@@ -15,14 +15,14 @@ export const EXPLORER_MOTION = {
   idle: {
     enabled: true,
     /** Vertical travel, in px. Each token picks a value in this range. */
-    minY: 4,
-    maxY: 8,
+    minY: 8,
+    maxY: 16,
     /** Horizontal travel, in px, kept smaller than the vertical float. */
-    maxX: 2,
+    maxX: 4.5,
     /** Rotation on X and Y, in degrees. */
-    maxRotate: 1.5,
-    minDuration: 8,
-    maxDuration: 12,
+    maxRotate: 3.2,
+    minDuration: 5.2,
+    maxDuration: 8,
     /** Wait after scrolling stops before the float returns. */
     resumeDelay: 0.48,
     /** Ease the float back to rest when scrolling begins. */
@@ -55,9 +55,12 @@ export const EXPLORER_MOTION = {
     /** Share of the nearest-group move given to the next group. */
     nextShare: 0.36,
     nextScaleGain: 0.025,
-    /** Added opacity for the next group at the peak. */
+    /** Added opacity when the next group is still fading in. */
     nextOpacity: 0.12,
-    /** The next group stays dimmer than the tokens the user can choose. */
+    /**
+     * A group already this visible is left at its own opacity.
+     * The secondary layer rests fully opaque, so the teaser does not dim it.
+     */
     nextOpacityCap: 0.62,
     /** Tokens already this faint are not revealed by the teaser. */
     opacityFloor: 0.1,
@@ -65,11 +68,11 @@ export const EXPLORER_MOTION = {
   breath: {
     enabled: true,
     minScale: 1,
-    maxScale: 1.03,
-    minOpacity: 0.9,
+    maxScale: 1.07,
+    minOpacity: 0.76,
     maxOpacity: 1,
     /** Seconds for one half of the cycle. The return takes the same time. */
-    duration: 8,
+    duration: 5,
   },
   hint: {
     enabled: true,
@@ -159,16 +162,20 @@ export function applyOpeningTeaser(
       opacity: base.opacity,
     };
   }
+  const revealed =
+    base.opacity >= teaser.nextOpacityCap
+      ? base.opacity
+      : Math.min(
+          teaser.nextOpacityCap,
+          base.opacity + teaser.nextOpacity * amount,
+        );
   return {
     z: Math.min(
       IMMERSIVE_DEPTH.maxZ,
       base.z + teaser.forwardZ * teaser.nextShare * amount,
     ),
     scale: base.scale * (1 + teaser.nextScaleGain * amount),
-    opacity: Math.min(
-      teaser.nextOpacityCap,
-      base.opacity + teaser.nextOpacity * amount,
-    ),
+    opacity: revealed,
   };
 }
 

@@ -18,17 +18,19 @@
   height: 40px;
   border: none;
   border-radius: 50%;
-  background: var(--button-face);
-  color: var(--groow-blue);
+  background: transparent;
+  color: #ffffff;
   cursor: pointer;
   transition:
     background-color 160ms ease,
+    color 160ms ease,
     box-shadow 160ms ease,
     transform 160ms ease;
 }
 
 .toolbar__button:hover {
-  background: #f5f5f5;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
 }
 
 .toolbar__button:active {
@@ -37,10 +39,20 @@
 
 .toolbar__button[aria-pressed="true"] {
   background: #ffffff;
+  color: var(--groow-blue);
   box-shadow: 0 1px 4px rgba(16, 24, 40, 0.16);
+}
+
+.toolbar__button[aria-pressed="true"]:hover {
+  background: #ffffff;
+  color: var(--groow-blue);
 }
 
 .toolbar__button:focus-visible {
   outline: 2px solid #ffffff;
   outline-offset: 2px;
+}
+
+.toolbar__button--action:hover {
+  background: rgba(255, 255, 255, 0.2);
 }

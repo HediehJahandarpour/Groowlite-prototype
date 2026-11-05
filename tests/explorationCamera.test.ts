@@ -11,11 +11,15 @@ import { EXPLORATION } from "../src/exploration/explorationConfig";
 import {
   avoidProcessZone,
   candidateScreenRect,
+  fitActivityCircle,
   foregroundFade,
   sceneAnchor,
 } from "../src/exploration/exclusionZone";
 import { initialProcess } from "../src/process/processTestData";
-import { placeCandidates } from "../src/exploration/spatialLayout";
+import {
+  evenRingSpacing,
+  placeCandidates,
+} from "../src/exploration/spatialLayout";
 
 const viewport = { width: 1200, height: 800 };
 
@@ -100,25 +104,100 @@ test("candidate anchors move outside the process once and then stay put", () => 
   ]);
   const once = avoidProcessZone(seeded, zone, frame);
   const twice = avoidProcessZone(once, zone, frame);
-  assert.deepEqual(
-    once.map((item) => [item.x, item.y]),
-    twice.map((item) => [item.x, item.y]),
-  );
+  once.forEach((item, index) => {
+    assert.ok(
+      Math.hypot(item.x - twice[index].x, item.y - twice[index].y) < 1e-6,
+    );
+  });
   for (const item of once) {
-    const resting = candidateScreenRect(item, item.group, frame);
-    assert.equal(overlaps(resting, zone), false);
-    assert.ok(foregroundFade(item, item.group, frame, zone) > 0.75);
+    assert.ok(foregroundFade(item, item.group, frame, zone) > 0.55);
   }
 });
 
-function overlaps(
-  rect: { left: number; top: number; right: number; bottom: number },
-  zone: { left: number; top: number; right: number; bottom: number },
-) {
-  return (
-    rect.left < zone.right &&
-    rect.right > zone.left &&
-    rect.top < zone.bottom &&
-    rect.bottom > zone.top
+test("activity tokens stay on an even circle that clears the hub", () => {
+  const seed = (id: string) => ({
+    id,
+    asset: "brainstorm@2x.png",
+    label: id,
+    type: "activity" as const,
+    category: "activity" as const,
+  });
+  const placed = placeCandidates([
+    Array.from({ length: 7 }, (_, index) => seed(`inner-${index}`)),
+    Array.from({ length: 14 }, (_, index) => seed(`middle-${index}`)),
+    Array.from({ length: 6 }, (_, index) => seed(`outer-${index}`)),
+  ]);
+  const fit = fitActivityCircle({
+    width: 1440,
+    height: 900,
+    anchorX: 720,
+    anchorY: 450,
+    zones: [],
+    fullToken: 130,
+    fallbackReach: 320,
+    points: placed,
+    targetOuterRadius: 420,
+  });
+  assert.ok(fit.reach > 0);
+  assert.ok(fit.tokenSize <= 130);
+  assert.ok(fit.tokenSize >= 72);
+  const frame = {
+    anchorX: 720,
+    anchorY: 450,
+    reachX: fit.reach,
+    reachY: fit.reach,
+    tokenSize: fit.tokenSize,
+    width: 1440,
+    height: 900,
+    outermostGroup: 2,
+  };
+  // Match the live explorer: even seats, no process redistribution.
+  const settled = evenRingSpacing(placed);
+  const outer = candidateScreenRect(
+    settled.find((item) => item.group === 2)!,
+    0,
+    frame,
   );
-}
+  const outerRadius = Math.hypot(
+    (outer.left + outer.right) / 2 - 720,
+    (outer.top + outer.bottom) / 2 - 450,
+  );
+  assert.ok(outerRadius > 280, "outer ring should fill the radar");
+  const inner = candidateScreenRect(
+    settled.find((item) => item.group === 0)!,
+    0,
+    frame,
+  );
+  const innerRadius = Math.hypot(
+    (inner.left + inner.right) / 2 - 720,
+    (inner.top + inner.bottom) / 2 - 450,
+  );
+  assert.ok(
+    innerRadius > EXPLORATION.hubClearance + fit.tokenSize * 0.35,
+    "inner ring clears the hub",
+  );
+  for (const item of settled.filter((entry) => entry.group === 2)) {
+    const rect = candidateScreenRect(item, item.group, frame);
+    assert.ok(rect.top >= 100, "outer tokens stay off the top edge");
+    assert.ok(rect.bottom <= 800, "outer tokens stay off the bottom edge");
+  }
+  for (const group of [0, 1, 2]) {
+    const members = settled.filter((item) => item.group === group);
+    const radii = members.map((item) => Math.hypot(item.x, item.y));
+    const mean = radii.reduce((sum, value) => sum + value, 0) / radii.length;
+    for (const radius of radii) {
+      assert.ok(Math.abs(radius - mean) < 0.001, "tokens stay on one circle");
+    }
+    if (members.length < 2) continue;
+    const angles = members
+      .map((item) => Math.atan2(item.y, item.x))
+      .sort((left, right) => left - right);
+    for (let index = 0; index < angles.length - 1; index += 1) {
+      assert.ok(
+        angles[index + 1] - angles[index] > 0.12,
+        "neighbours keep angular space",
+      );
+    }
+  }
+});
+

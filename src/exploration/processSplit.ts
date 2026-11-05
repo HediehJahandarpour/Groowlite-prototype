@@ -125,8 +125,9 @@ function settleHorizontal(
     if (minLeft < limit) dx = limit - minLeft;
   }
   const mid = (anchorBox.left + anchorBox.right) / 2 + dx;
-  const minMid = viewport.width * (side === "left" ? 0.08 : 0.7);
-  const maxMid = viewport.width * (side === "left" ? 0.32 : 0.92);
+  // Right side stays near the viewport edge so it clears the phase arc.
+  const minMid = viewport.width * (side === "left" ? 0.08 : 0.78);
+  const maxMid = viewport.width * (side === "left" ? 0.32 : 0.96);
   if (mid < minMid) dx += minMid - mid;
   if (mid > maxMid) dx -= mid - maxMid;
   if (dx === 0) return motion;

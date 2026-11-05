@@ -12,9 +12,19 @@
   cursor: grab;
 }
 
+.canvas--select-ready {
+  cursor: crosshair;
+}
+
 .canvas--panning,
-.canvas--panning.canvas--pan-ready {
+.canvas--panning.canvas--pan-ready,
+.canvas--panning.canvas--select-ready {
   cursor: grabbing;
+}
+
+.canvas--boxing,
+.canvas--boxing.canvas--select-ready {
+  cursor: crosshair;
 }
 
 .canvas__grid,
@@ -39,7 +49,8 @@
 }
 
 .canvas--locked,
-.canvas--locked.canvas--pan-ready {
+.canvas--locked.canvas--pan-ready,
+.canvas--locked.canvas--select-ready {
   cursor: default;
 }
 

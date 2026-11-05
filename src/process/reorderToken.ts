@@ -37,6 +37,50 @@ export function spanForToken(tokens: readonly ProcessToken[], id: string): Token
 }
 
 /**
+ * Contiguous multi-selection as one magnetic block.
+ * Returns null when nothing is selected, or the ids are not a single run.
+ */
+export function spanForSelection(
+  tokens: readonly ProcessToken[],
+  selectedIds: ReadonlySet<string> | readonly string[],
+): TokenSpan | null {
+  const ids = selectedIds instanceof Set ? selectedIds : new Set(selectedIds);
+  if (ids.size === 0) return null;
+  const middles = middleTokens(tokens);
+  const indices: number[] = [];
+  for (let index = 0; index < middles.length; index += 1) {
+    if (ids.has(middles[index].id)) indices.push(index);
+  }
+  if (indices.length === 0) return null;
+  const start = indices[0];
+  const end = indices[indices.length - 1];
+  if (end - start + 1 !== indices.length) return null;
+  for (let index = 1; index < indices.length; index += 1) {
+    if (indices[index] !== start + index) return null;
+  }
+  const group = middles.slice(start, end + 1);
+  return { start, count: group.length, ids: group.map((item) => item.id) };
+}
+
+/**
+ * Span used when the user presses a token.
+ * A multi-selection that includes the pressed id moves as one block when contiguous.
+ * Otherwise the usual phase/activity span applies.
+ */
+export function spanForDrag(
+  tokens: readonly ProcessToken[],
+  pressedId: string,
+  selectedIds: ReadonlySet<string> | readonly string[] = [],
+): TokenSpan | null {
+  const ids = selectedIds instanceof Set ? selectedIds : new Set(selectedIds);
+  if (ids.size >= 2 && ids.has(pressedId)) {
+    const group = spanForSelection(tokens, ids);
+    if (group) return group;
+  }
+  return spanForToken(tokens, pressedId);
+}
+
+/**
  * A phase can only land on a phase boundary, so it does not split another
  * phase's group. Activities and checkpoints may land on any middle index.
  * `destinationIndex` is counted after the moving span has been removed.

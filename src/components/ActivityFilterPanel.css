@@ -1,3 +1,111 @@
+.global-token-search {
+  position: absolute;
+  z-index: 8;
+  top: 18px;
+  left: 50%;
+  width: min(380px, calc(100% - 160px));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  pointer-events: auto;
+  user-select: none;
+  cursor: auto;
+}
+
+.global-token-search__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow:
+    0 8px 28px rgba(40, 60, 90, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+}
+
+.global-token-search__bar:focus-within {
+  border-color: rgba(52, 139, 205, 0.55);
+  background: rgba(255, 255, 255, 0.58);
+  outline: 2px solid rgba(52, 139, 205, 0.22);
+  outline-offset: 1px;
+}
+
+.global-token-search__icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  opacity: 0.72;
+}
+
+.global-token-search__bar input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #14171c;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: normal;
+  outline: none;
+}
+
+.global-token-search__bar input::placeholder {
+  color: #b0b4c4;
+}
+
+.global-token-search__clear {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #8b90a0;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.global-token-search__clear:hover {
+  color: #14171c;
+  background: #f2f3f7;
+}
+
+.global-token-search__clear:focus-visible {
+  outline: 2px solid var(--groow-blue);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .global-token-search {
+    top: 12px;
+    width: min(320px, calc(100% - 48px));
+  }
+
+  .global-token-search__bar {
+    height: 36px;
+    padding: 0 12px;
+  }
+
+  .global-token-search__bar input {
+    font-size: 12px;
+  }
+}
+
 .activity-filter {
   position: absolute;
   z-index: 8;

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { reflectionApiPlugin } from "./server/reflection/createReflectionApiPlugin";
 
 const tokensDir = "/Users/daneshmand/Desktop/Studio Tast/Groow lite/Tokens";
 
@@ -45,5 +46,5 @@ function tokensSource(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [tokensSource(), react()],
+  plugins: [tokensSource(), reflectionApiPlugin(), react()],
 });

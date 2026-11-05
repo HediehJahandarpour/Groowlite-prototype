@@ -67,6 +67,59 @@ export function duplicateToken(
   return { tokens: renumber(parts.start, middles, parts.end), createdId };
 }
 
+/**
+ * Duplicate every selected eligible token once, in process order.
+ * Copies are inserted as a contiguous block after the last selected token.
+ */
+export function duplicateSelectedTokens(
+  tokens: ProcessToken[],
+  selectedIds: ReadonlySet<string> | readonly string[],
+  idFactory: (token: ProcessToken) => string = (token) =>
+    `${token.type}-${crypto.randomUUID()}`,
+): { tokens: ProcessToken[]; createdIds: string[] } {
+  const parts = ends(tokens);
+  if (!parts) return { tokens, createdIds: [] };
+  const ids = selectedIds instanceof Set ? selectedIds : new Set(selectedIds);
+  const selected = parts.middles.filter((token) => ids.has(token.id));
+  if (selected.length === 0) return { tokens, createdIds: [] };
+
+  const lastIndex = Math.max(
+    ...selected.map((token) => parts.middles.findIndex((item) => item.id === token.id)),
+  );
+  const copies = selected.map((token) => {
+    const createdId = idFactory(token);
+    return {
+      copy: {
+        ...token,
+        id: createdId,
+        permanent: false,
+      } satisfies ProcessToken,
+      createdId,
+    };
+  });
+  const middles = parts.middles.slice();
+  middles.splice(lastIndex + 1, 0, ...copies.map((item) => item.copy));
+  return {
+    tokens: renumber(parts.start, middles, parts.end),
+    createdIds: copies.map((item) => item.createdId),
+  };
+}
+
+/** Remove every selected removable token in one pass. */
+export function removeSelectedTokens(
+  tokens: ProcessToken[],
+  selectedIds: ReadonlySet<string> | readonly string[],
+): ProcessToken[] {
+  const parts = ends(tokens);
+  if (!parts) return tokens;
+  const ids = selectedIds instanceof Set ? selectedIds : new Set(selectedIds);
+  const middles = parts.middles.filter(
+    (token) => !(ids.has(token.id) && isRemovable(token)),
+  );
+  if (middles.length === parts.middles.length) return tokens;
+  return renumber(parts.start, middles, parts.end);
+}
+
 /** Turn the artwork one pentagon step. The slot, heading, and neighbours stay put. */
 export function rotateToken(tokens: ProcessToken[], id: string): ProcessToken[] {
   return tokens.map((token) => {

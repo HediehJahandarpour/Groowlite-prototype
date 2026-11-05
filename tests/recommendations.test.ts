@@ -10,7 +10,12 @@ import { PHASE_PALETTE, type PhaseId } from "../src/data/phasePalette";
 import { activityLayersFor, distributeIntoLayers } from "../src/recommendations/radialGrouping";
 import { rankActivities } from "../src/recommendations/rankingEngine";
 import { readProcessContext } from "../src/recommendations/processContext";
-import { NEUTRAL_SCORE, RECOMMENDATION_WEIGHTS } from "../src/recommendations/recommendationConfig";
+import {
+  layerCapacitiesFor,
+  NEUTRAL_SCORE,
+  RECOMMENDATION_WEIGHTS,
+} from "../src/recommendations/recommendationConfig";
+import { filterActivitiesByPhases } from "../src/recommendations/activityFilters";
 import { emptyPhaseScores } from "../src/recommendations/colourAnalysis";
 import type { ProcessToken, TokenCategory, TokenType } from "../src/process/processTypes";
 
@@ -99,8 +104,26 @@ test("every activity is scored and placed on exactly one layer", () => {
   assert.equal(ids.length, ACTIVITY_REGISTRY.length);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(layers.at(-1)?.length ? layers.at(-1)!.length > 0 : false, true);
-  assert.equal(layers[0].length <= 6, true);
-  for (const layer of layers.slice(1)) assert.equal(layer.length <= 6, true);
+  assert.equal(layers[0].length <= 7, true);
+  for (const layer of layers.slice(1)) assert.equal(layer.length <= 14, true);
+});
+
+test("a phase-sized pool fits on three Figma rings", () => {
+  assert.deepEqual(layerCapacitiesFor(22), [7, 10, 5]);
+  assert.deepEqual(layerCapacitiesFor(27), [7, 10, 10]);
+  assert.deepEqual(layerCapacitiesFor(16), [6, 10]);
+  for (const phase of PHASES) {
+    const pool = filterActivitiesByPhases(ACTIVITY_REGISTRY, [phase]);
+    const { layers } = activityLayersFor([phaseToken(phase)], 1, pool, [phase]);
+    assert.ok(layers.length <= 3, `${phase} should use at most three rings`);
+    assert.equal(
+      layers.flat().length,
+      pool.length,
+      `${phase} should keep every filtered activity`,
+    );
+    if (layers[0]) assert.ok(layers[0].length <= 7);
+    if (layers[1]) assert.ok(layers[1].length <= 14);
+  }
 });
 
 test("identical scores keep library order", () => {

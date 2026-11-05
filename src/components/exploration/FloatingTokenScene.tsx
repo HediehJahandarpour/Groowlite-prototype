@@ -2,14 +2,13 @@ import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } fr
 import gsap from "gsap";
 import type { ScreenRect } from "../../exploration/cameraFocus";
 import { IMMERSIVE_DEPTH, projectCandidate } from "../../exploration/depthPose";
-import { EXPLORATION } from "../../exploration/explorationConfig";
+import { EXPLORATION, PROCESS_ACTIVITY_SIZE } from "../../exploration/explorationConfig";
 import {
   EXPLORER_MOTION,
   applyOpeningTeaser,
   depthTransform,
   prefersReducedMotion,
 } from "../../exploration/explorerMotion";
-import { foregroundFade } from "../../exploration/exclusionZone";
 import { createIdleFloat, type IdleFloatController } from "../../exploration/idleFloat";
 import type { SpatialCandidate } from "../../exploration/spatialLayout";
 import type { CatalogEntry } from "../../process/tokenCatalog";
@@ -42,6 +41,34 @@ type HoveredToken = {
   anchor: HTMLButtonElement;
 };
 
+/** On-screen width of an activity token seated in the open process. */
+function processActivityWidth(): number {
+  const tokens = document.querySelectorAll(
+    '.process-token[data-token-type="activity"]:not(.process-token--floating)',
+  );
+  let widest = 0;
+  for (const token of tokens) {
+    if (!(token instanceof HTMLElement)) continue;
+    widest = Math.max(widest, token.getBoundingClientRect().width);
+  }
+  return widest > 0 ? widest : PROCESS_ACTIVITY_SIZE;
+}
+
+/** Scale so this floating token matches a process activity token. */
+function hoverScaleFor(node: HTMLButtonElement): number {
+  const current = node.getBoundingClientRect().width;
+  if (current <= 1) return 1;
+  return processActivityWidth() / current;
+}
+
+function clearHoverMotion(node: HTMLButtonElement | null | undefined) {
+  if (!node) return;
+  node.style.removeProperty("--hover-scale");
+  node.style.removeProperty("--hover-lift");
+  node.style.removeProperty("--tilt-x");
+  node.style.removeProperty("--tilt-y");
+}
+
 export const FloatingTokenScene = forwardRef<
   ExplorerMotionHandle,
   FloatingTokenSceneProps
@@ -54,7 +81,7 @@ export const FloatingTokenScene = forwardRef<
     tokenSize,
     anchorX,
     anchorY,
-    zones,
+    zones: _zones,
     subscribe,
     onPick,
     onUserScroll,
@@ -65,6 +92,7 @@ export const FloatingTokenScene = forwardRef<
 ) {
   const nodes = useRef(new Map<string, HTMLButtonElement>());
   const hoverId = useRef<string | null>(null);
+  const hoverScale = useRef(1);
   const pickLock = useRef(false);
   const [hover, setHover] = useState<HoveredToken | null>(null);
   const idleRef = useRef<IdleFloatController | null>(null);
@@ -241,14 +269,10 @@ export const FloatingTokenScene = forwardRef<
                 opacity: motion.opacity,
               })
             : null;
-        const guard = foregroundFade(
-          item,
-          progress,
-          { anchorX, anchorY, reachX, reachY, tokenSize },
-          zones,
-        );
-        const opacity = (posed?.opacity ?? motion.opacity) * guard;
-        const interactive = motion.interactive && guard > 0.55;
+        // Keep every floating token at full strength. Process-zone fade used
+        // to wash out the left side of the ring (Share, Involve Experts, …).
+        const opacity = posed?.opacity ?? motion.opacity;
+        const interactive = motion.interactive;
         node.style.transform = posed
           ? depthTransform({
               x: motion.x,
@@ -261,8 +285,10 @@ export const FloatingTokenScene = forwardRef<
           : motion.transform;
         node.style.zIndex = String(motion.zIndex);
         node.style.setProperty("--fade", opacity.toFixed(3));
+        node.style.visibility = opacity < 0.01 ? "hidden" : "visible";
         node.dataset.ready = interactive ? "true" : "false";
         node.tabIndex = interactive ? 0 : -1;
+        node.setAttribute("aria-hidden", interactive ? "false" : "true");
         node.classList.toggle("is-near", interactive);
         const was = seen.get(item.id) ?? false;
         const visible = was
@@ -277,9 +303,9 @@ export const FloatingTokenScene = forwardRef<
       if (!current) return;
       const node = nodes.current.get(current);
       if (node?.dataset.ready === "true") return;
-      const art = node?.querySelector(".float-token__art");
-      if (art instanceof HTMLElement) art.style.transform = "";
+      clearHoverMotion(node);
       hoverId.current = null;
+      hoverScale.current = 1;
       idle.release(current);
       setHover(null);
     };
@@ -310,7 +336,6 @@ export const FloatingTokenScene = forwardRef<
     reachY,
     subscribe,
     tokenSize,
-    zones,
   ]);
 
   useLayoutEffect(() => {
@@ -323,29 +348,31 @@ export const FloatingTokenScene = forwardRef<
   function showCard(node: HTMLButtonElement, item: SpatialCandidate) {
     if (node.dataset.ready !== "true") return;
     hoverId.current = item.id;
+    hoverScale.current = hoverScaleFor(node);
     idleRef.current?.hold(item.id);
+    node.style.setProperty("--hover-scale", String(hoverScale.current));
+    node.style.setProperty("--hover-lift", "28");
     setHover({ id: item.id, anchor: node });
   }
 
   function hideCard(node: HTMLButtonElement) {
     const id = hoverId.current;
     hoverId.current = null;
+    hoverScale.current = 1;
     if (id) idleRef.current?.release(id);
     setHover(null);
-    const art = node.querySelector(".float-token__art");
-    if (art instanceof HTMLElement) art.style.transform = "";
+    clearHoverMotion(node);
   }
 
   function tilt(node: HTMLButtonElement, clientX: number, clientY: number) {
     if (node.dataset.ready !== "true") return;
-    const art = node.querySelector(".float-token__art");
-    if (!(art instanceof HTMLElement)) return;
     const box = node.getBoundingClientRect();
     const px = (clientX - box.left) / box.width - 0.5;
     const py = (clientY - box.top) / box.height - 0.5;
-    const leanX = Math.max(-1, Math.min(1, -py)) * 32;
-    const leanY = Math.max(-1, Math.min(1, px)) * 42;
-    art.style.transform = `translateZ(28px) rotateX(${leanX.toFixed(2)}deg) rotateY(${leanY.toFixed(2)}deg) scale(1.04)`;
+    const leanX = Math.max(-1, Math.min(1, -py)) * 12;
+    const leanY = Math.max(-1, Math.min(1, px)) * 16;
+    node.style.setProperty("--tilt-x", `${leanX.toFixed(2)}deg`);
+    node.style.setProperty("--tilt-y", `${leanY.toFixed(2)}deg`);
   }
 
   return (
@@ -415,8 +442,10 @@ export const FloatingTokenScene = forwardRef<
             ✓
           </span>
           <span className="float-token__art">
-            <span className="float-token__float">
-              <img src={`/tokens/${item.asset}`} alt="" draggable={false} />
+            <span className="float-token__tilt">
+              <span className="float-token__float">
+                <img src={`/tokens/${item.asset}`} alt="" draggable={false} />
+              </span>
             </span>
           </span>
         </button>

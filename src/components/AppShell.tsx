@@ -1,16 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCanvasView } from "../canvas/useCanvasView";
 import { useExplorationCamera } from "../exploration/useExplorationCamera";
-import { removeToken, replaceToken } from "../process/editToken";
+import {
+  duplicateSelectedTokens,
+  duplicateToken,
+  removeSelectedTokens,
+  removeToken,
+  replaceToken,
+  rotateToken,
+} from "../process/editToken";
+import {
+  downloadBlob,
+  exportSelectedTokensPng,
+} from "../process/exportSelected";
 import { insertToken } from "../process/insertToken";
+import { canReflectOnSelection } from "../reflection/reflectionContext";
+import { useReflectionSession } from "../reflection/useReflectionSession";
+import type { ScreenRect } from "../process/multiSelect";
 import { initialProcess } from "../process/processTestData";
 import type { ProcessToken } from "../process/processTypes";
 import type { CatalogEntry, MenuCategory } from "../process/tokenCatalog";
 import { Canvas } from "./Canvas";
-import { Header } from "./Header";
+import { Header, INITIAL_PROJECT, type ProjectDetails } from "./Header";
 import { LeftToolbar, type CanvasTool } from "./LeftToolbar";
 import { ProcessCanvas } from "./ProcessCanvas";
+import { AIReflectionPanel } from "./reflection/AIReflectionPanel";
 import { UndoRedo } from "./UndoRedo";
+import type { SelectOptions } from "./useProcessDrag";
 import { ZoomControls } from "./ZoomControls";
 import "./AppShell.css";
 
@@ -21,18 +37,24 @@ type ProcessSnapshot = {
 };
 
 export function AppShell() {
-  const [tool, setTool] = useState<CanvasTool>("select");
+  /** Starts in Add so empty-canvas drag pans. Select must be chosen to pick tokens. */
+  const [tool, setTool] = useState<CanvasTool>("add");
   const [tokens, setTokens] = useState<ProcessToken[]>(initialProcess);
+  const [project, setProject] = useState<ProjectDetails>(INITIAL_PROJECT);
   const [activeInsertion, setActiveInsertion] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [category, setCategory] = useState<MenuCategory | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [marqueeRect, setMarqueeRect] = useState<ScreenRect | null>(null);
+  const [marqueeAdditive, setMarqueeAdditive] = useState(false);
   const [replaceId, setReplaceId] = useState<string | null>(null);
   const [gapOpen, setGapOpen] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [atmosphereHost, setAtmosphereHost] = useState<HTMLDivElement | null>(null);
+  const hitTestRef = useRef<(rect: ScreenRect) => string[]>(() => []);
   const { view, panBy, zoomBy, zoomByPercent, resetZoom, flyTo, getView } =
     useCanvasView();
+  const reflection = useReflectionSession();
   const exploring =
     category === "phase" || category === "activity" || category === "checkpoint";
   const { atmosphere, split } = useExplorationCamera({
@@ -45,6 +67,8 @@ export function AppShell() {
     flyTo,
   });
   const canvasLocked = exploring || atmosphere > 0;
+  const selectionEnabled =
+    tool === "select" && !canvasLocked && !reflection.isOpen;
   const [sessionAdds, setSessionAdds] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -56,6 +80,7 @@ export function AppShell() {
   const sessionHead = useRef(false);
   const historyRef = useRef({ undo: () => {}, redo: () => {} });
   tokensRef.current = tokens;
+  const selectedId = selectedIds.length === 1 ? selectedIds[0] : null;
 
   const closeMenu = useCallback(() => {
     setMenuOpen(false);
@@ -67,8 +92,15 @@ export function AppShell() {
   }, []);
 
   const clearSelection = useCallback(() => {
-    setSelectedId(null);
+    setSelectedIds([]);
     setReplaceId(null);
+    setMarqueeRect(null);
+    setMarqueeAdditive(false);
+  }, []);
+
+  const updateMarquee = useCallback((rect: ScreenRect | null, additive: boolean) => {
+    setMarqueeRect(rect);
+    setMarqueeAdditive(Boolean(rect) && additive);
   }, []);
 
   useEffect(() => {
@@ -86,22 +118,66 @@ export function AppShell() {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key !== "Delete" && event.key !== "Backspace") return;
-      if (isTypingTarget(event.target) || !selectedId) return;
+      if (event.key !== "Escape") return;
+      if (reflection.isOpen) {
+        event.preventDefault();
+        reflection.close();
+        return;
+      }
+      if (isTypingTarget(event.target)) return;
+      if (document.documentElement.classList.contains("is-reordering")) return;
+      if (selectedIds.length === 0 && !marqueeRect) return;
       event.preventDefault();
-      const current = tokensRef.current;
-      const next = removeToken(current, selectedId);
-      if (next === current) return;
-      remember();
-      sessionHead.current = false;
-      tokensRef.current = next;
-      setTokens(next);
       clearSelection();
       closeMenu();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clearSelection, closeMenu, selectedId]);
+  }, [
+    clearSelection,
+    closeMenu,
+    marqueeRect,
+    reflection.close,
+    reflection.isOpen,
+    selectedIds.length,
+  ]);
+
+  function projectInfo() {
+    return {
+      title: project.name,
+      description: project.description,
+      designQuestion: project.designQuestion,
+      target: project.target,
+    };
+  }
+
+  function startWholeProcessReflection() {
+    reflection.start({
+      scope: "whole-process",
+      tokens: tokensRef.current,
+      selectedIds: [],
+      project: projectInfo(),
+    });
+  }
+
+  function startSelectedReflection() {
+    if (!canReflectOnSelection(tokensRef.current, selectedIds)) return;
+    reflection.start({
+      scope: "selected-section",
+      tokens: tokensRef.current,
+      selectedIds,
+      project: projectInfo(),
+    });
+  }
+
+  function backToProcessFromReflection() {
+    reflection.close();
+  }
+
+  function exploreActivitiesFromReflection() {
+    reflection.close();
+    exploreMode("activity");
+  }
 
   function activateInsertion(index: number) {
     insertionRef.current = index;
@@ -152,6 +228,7 @@ export function AppShell() {
     setActiveInsertion(previous.insertion);
     setCanUndo(pastRef.current.length > 0);
     setCanRedo(true);
+    clearSelection();
     if (leavingSession) setSessionAdds((count) => Math.max(0, count - 1));
   }
 
@@ -174,6 +251,7 @@ export function AppShell() {
     setActiveInsertion(next.insertion);
     setCanUndo(true);
     setCanRedo(futureRef.current.length > 0);
+    clearSelection();
     if (next.session) setSessionAdds((count) => count + 1);
   }
 
@@ -184,18 +262,54 @@ export function AppShell() {
     setCategory((current) => (current === next ? null : next));
   }
 
-  function selectToken(id: string) {
-    setSelectedId(id);
+  function selectToken(id: string, options?: SelectOptions) {
+    setReplaceId(null);
+    setMenuOpen(false);
+    setCategory(null);
+    setGapOpen(false);
+    setMarqueeRect(null);
+    if (options?.toggle) {
+      setSelectedIds((current) =>
+        current.includes(id)
+          ? current.filter((item) => item !== id)
+          : [...current, id],
+      );
+      return;
+    }
+    setSelectedIds([id]);
+  }
+
+  function applyBoxSelection(rect: ScreenRect | null, additive: boolean) {
+    setMarqueeRect(null);
+    setMarqueeAdditive(false);
+    if (!rect) return;
+    const hits = hitTestRef.current(rect);
+    if (hits.length === 0) {
+      if (!additive) clearSelection();
+      return;
+    }
+    if (additive) {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        for (const id of hits) next.add(id);
+        return [...next];
+      });
+      return;
+    }
+    setSelectedIds(hits);
     setReplaceId(null);
     setMenuOpen(false);
     setCategory(null);
     setGapOpen(false);
   }
 
-  function removeSelected() {
-    if (!selectedId) return;
+  function removeSelection() {
+    if (selectedIds.length === 0) return;
     const current = tokensRef.current;
-    const next = removeToken(current, selectedId);
+    const next =
+      selectedIds.length === 1
+        ? removeToken(current, selectedIds[0])
+        : removeSelectedTokens(current, selectedIds);
     if (next === current) return;
     remember();
     sessionHead.current = false;
@@ -203,6 +317,76 @@ export function AppShell() {
     setTokens(next);
     clearSelection();
     closeMenu();
+  }
+
+  const removeSelectionRef = useRef(removeSelection);
+  const selectedIdsRef = useRef(selectedIds);
+  removeSelectionRef.current = removeSelection;
+  selectedIdsRef.current = selectedIds;
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      if (isTypingTarget(event.target) || selectedIdsRef.current.length === 0) return;
+      event.preventDefault();
+      removeSelectionRef.current();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    const alive = new Set(tokens.map((token) => token.id));
+    setSelectedIds((current) => {
+      const next = current.filter((id) => alive.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [tokens]);
+
+  function rotateSelected() {
+    if (!selectedId) return;
+    const current = tokensRef.current;
+    const next = rotateToken(current, selectedId);
+    if (next === current) return;
+    remember();
+    sessionHead.current = false;
+    tokensRef.current = next;
+    setTokens(next);
+  }
+
+  function duplicateSelected() {
+    if (selectedIds.length === 0) return;
+    const current = tokensRef.current;
+    if (selectedIds.length === 1) {
+      const result = duplicateToken(current, selectedIds[0]);
+      if (!result.createdId || result.tokens === current) return;
+      remember();
+      sessionHead.current = false;
+      tokensRef.current = result.tokens;
+      setTokens(result.tokens);
+      setSelectedIds([result.createdId]);
+      closeMenu();
+      return;
+    }
+    const result = duplicateSelectedTokens(current, selectedIds);
+    if (result.createdIds.length === 0 || result.tokens === current) return;
+    remember();
+    sessionHead.current = false;
+    tokensRef.current = result.tokens;
+    setTokens(result.tokens);
+    setSelectedIds(result.createdIds);
+    closeMenu();
+  }
+
+  async function exportSelection() {
+    if (selectedIds.length < 2) return;
+    try {
+      const blob = await exportSelectedTokensPng(tokensRef.current, selectedIds);
+      if (!blob) return;
+      downloadBlob(blob, "groow-selected-tokens.png");
+    } catch {
+      // Image load failures leave the process unchanged.
+    }
   }
 
   function switchSelected() {
@@ -260,15 +444,18 @@ export function AppShell() {
       }
       style={{ ["--atmosphere" as string]: atmosphere }}
     >
-      <Header />
+      <Header details={project} onChange={setProject} />
       <main className="workspace">
         <Canvas
           viewportRef={viewportRef}
           view={view}
           onPanBy={panBy}
           onZoomBy={zoomBy}
-          onBackgroundClick={clearSelection}
-          locked={canvasLocked}
+          onBackgroundClick={selectionEnabled ? clearSelection : undefined}
+          boxSelectEnabled={selectionEnabled}
+          onBoxSelectMove={updateMarquee}
+          onBoxSelectEnd={applyBoxSelection}
+          locked={canvasLocked || reflection.isOpen}
           atmosphere={atmosphere}
           atmosphereRef={setAtmosphereHost}
         >
@@ -289,12 +476,25 @@ export function AppShell() {
             onCloseMenu={closeMenu}
             viewportRef={viewportRef}
             view={view}
-            selectedId={selectedId}
+            selectedIds={selectionEnabled ? selectedIds : []}
+            marqueeRect={selectionEnabled ? marqueeRect : null}
+            marqueeAdditive={marqueeAdditive}
+            hitTestRef={hitTestRef}
             replaceId={replaceId}
+            selectionEnabled={selectionEnabled}
             onSelect={selectToken}
             gapOpen={gapOpen && !replaceId}
-            onRemove={removeSelected}
+            onRemove={removeSelection}
+            onRotate={rotateSelected}
             onSwitch={switchSelected}
+            onCopySelected={duplicateSelected}
+            onExportSelected={exportSelection}
+            onReflectSelected={
+              !reflection.isOpen &&
+              canReflectOnSelection(tokens, selectedIds)
+                ? startSelectedReflection
+                : undefined
+            }
             onReorder={commitReorder}
             onPanBy={panBy}
             explorationActive={canvasLocked}
@@ -304,7 +504,14 @@ export function AppShell() {
             atmosphereHost={atmosphereHost}
           />
         </Canvas>
-        <LeftToolbar tool={tool} onToolChange={setTool} />
+        <LeftToolbar
+          tool={tool}
+          onToolChange={(next) => {
+            if (next !== "select") clearSelection();
+            setTool(next);
+          }}
+          onReflect={startWholeProcessReflection}
+        />
         <UndoRedo
           canUndo={canUndo}
           canRedo={canRedo}
@@ -317,6 +524,24 @@ export function AppShell() {
           onZoomByPercent={zoomByPercent}
           onResetZoom={resetZoom}
         />
+        {reflection.isOpen ? (
+          <AIReflectionPanel
+            snapshot={reflection.snapshot}
+            onClose={reflection.close}
+            onAnswerChange={reflection.setDraftAnswer}
+            onContinue={() => {
+              if (reflection.snapshot.busy) return;
+              reflection.submitAnswer();
+            }}
+            onRetry={reflection.retryGeneration}
+            onContinueWithoutAi={reflection.continueWithFallback}
+            onBackToProcess={backToProcessFromReflection}
+            onExploreActivities={exploreActivitiesFromReflection}
+            onSave={() => {
+              reflection.saveCurrent();
+            }}
+          />
+        ) : null}
       </main>
     </div>
   );

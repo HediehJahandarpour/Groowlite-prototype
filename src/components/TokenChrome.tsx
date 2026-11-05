@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { ArrowLeftRight, Trash2 } from "lucide-react";
+import { ArrowLeftRight, RotateCw, Sparkles, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { polygonPoints } from "../process/tokenGeometry";
 import type { Point } from "../process/processTypes";
@@ -17,16 +17,23 @@ type TokenChromeProps = {
   /** Recedes with the process while a radar plate is in front. */
   behind?: boolean;
   onRemove: () => void;
+  onRotate?: () => void;
   onSwitch?: () => void;
+  onReflect?: () => void;
 };
 
 const ACTIONS: {
   id: string;
   label: string;
   icon: LucideIcon;
-  run: keyof Pick<TokenChromeProps, "onRemove" | "onSwitch">;
+  run: keyof Pick<
+    TokenChromeProps,
+    "onRemove" | "onRotate" | "onSwitch" | "onReflect"
+  >;
 }[] = [
+  { id: "reflect", label: "Reflect", icon: Sparkles, run: "onReflect" },
   { id: "remove", label: "Remove", icon: Trash2, run: "onRemove" },
+  { id: "rotate", label: "Rotate", icon: RotateCw, run: "onRotate" },
   { id: "switch", label: "Switch", icon: ArrowLeftRight, run: "onSwitch" },
 ];
 
@@ -34,18 +41,20 @@ function stopPointer(event: ReactPointerEvent) {
   event.stopPropagation();
 }
 
-export function TokenChrome({
+/** Blue pentagonal outline for one selected token. */
+export function SelectedTokenOutline({
   points,
   viewScale,
   behind = false,
-  onRemove,
-  onSwitch,
-}: TokenChromeProps) {
+}: {
+  points: Point[];
+  viewScale: number;
+  behind?: boolean;
+}) {
   if (points.length < 3) return null;
   const scale = viewScale > 0 ? viewScale : 1;
   const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
   const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
-  const top = Math.min(...points.map((point) => point.y));
   const strokeWidth = SELECTION_STROKE_PX / scale;
   const frame = points.map((point) => {
     const dx = point.x - centerX;
@@ -57,30 +66,49 @@ export function TokenChrome({
       y: point.y + (dy / reach) * push,
     };
   });
-  const handlers = { onRemove, onSwitch };
-  const actions = ACTIONS.filter((action) => action.run !== "onSwitch" || onSwitch);
+
+  return (
+    <svg
+      className={behind ? "token-selection token-selection--behind" : "token-selection"}
+      viewBox="0 0 4000 4000"
+      aria-hidden="true"
+    >
+      <polygon
+        points={polygonPoints(points)}
+        fill={SELECTION_FILL}
+        fillOpacity={0.2}
+        stroke="none"
+      />
+      <polygon
+        points={polygonPoints(frame)}
+        fill="none"
+        stroke={SELECTION_STROKE}
+        strokeWidth={strokeWidth}
+        strokeLinejoin="miter"
+      />
+    </svg>
+  );
+}
+
+export function TokenChrome({
+  points,
+  viewScale,
+  behind = false,
+  onRemove,
+  onRotate,
+  onSwitch,
+  onReflect,
+}: TokenChromeProps) {
+  if (points.length < 3) return null;
+  const scale = viewScale > 0 ? viewScale : 1;
+  const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+  const top = Math.min(...points.map((point) => point.y));
+  const handlers = { onRemove, onRotate, onSwitch, onReflect };
+  const actions = ACTIONS.filter((action) => handlers[action.run]);
 
   return (
     <>
-      <svg
-        className={behind ? "token-selection token-selection--behind" : "token-selection"}
-        viewBox="0 0 4000 4000"
-        aria-hidden="true"
-      >
-        <polygon
-          points={polygonPoints(points)}
-          fill={SELECTION_FILL}
-          fillOpacity={0.2}
-          stroke="none"
-        />
-        <polygon
-          points={polygonPoints(frame)}
-          fill="none"
-          stroke={SELECTION_STROKE}
-          strokeWidth={strokeWidth}
-          strokeLinejoin="miter"
-        />
-      </svg>
+      <SelectedTokenOutline points={points} viewScale={viewScale} behind={behind} />
       <div
         className={
           behind

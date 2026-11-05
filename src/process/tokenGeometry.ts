@@ -37,6 +37,12 @@ const ACTIVITY_INPUT_WIDTH = 177;
  */
 export const ACTIVITY_TO_PHASE = ACTIVITY_INPUT_WIDTH / PHASE_INPUT_WIDTH;
 
+/** World-pixel width of an activity token seated on a slot of this edge length. */
+export function activityWorldWidth(slotEdge: number): number {
+  const artWidth = 313;
+  return artWidth * ((slotEdge * ACTIVITY_TO_PHASE) / ACTIVITY_INPUT_WIDTH);
+}
+
 /**
  * Checkpoint trapezoid, turned so the chain meets its left and right sides.
  * Edge 2 is the left side (previous token). The right side leads to the next.

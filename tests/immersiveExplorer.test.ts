@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  activityScrollMax,
+  activityScrollSpan,
   apparentScale,
   clampProgress,
+  IMMERSIVE_DEPTH,
   poseAtDepth,
   projectCandidate,
 } from "../src/exploration/depthPose";
@@ -58,30 +61,50 @@ test("replacing a token ranks from that token's place in the chain", () => {
   assert.equal(explorationIndex(process, 1, null), 1);
 });
 
-test("deeper groups are smaller, fainter, and farther from the camera", () => {
-  const front = poseAtDepth(0);
+test("the visible rings rest opaque at primary, secondary, and tertiary scales", () => {
+  const inner = poseAtDepth(0);
   const middle = poseAtDepth(1);
-  const far = poseAtDepth(2);
-  assert.ok(front.z > middle.z);
-  assert.ok(middle.z > far.z);
-  assert.ok(apparentScale(0) > apparentScale(1) * 1.7);
+  const outer = poseAtDepth(2);
+  const hidden = poseAtDepth(3);
+  assert.ok(Math.abs(apparentScale(0) - IMMERSIVE_DEPTH.primaryScale) < 0.02);
+  assert.ok(Math.abs(apparentScale(1) - IMMERSIVE_DEPTH.secondaryScale) < 0.02);
+  assert.ok(Math.abs(apparentScale(2) - IMMERSIVE_DEPTH.tertiaryScale) < 0.02);
+  assert.equal(inner.opacity, IMMERSIVE_DEPTH.primaryOpacity);
+  assert.equal(middle.opacity, IMMERSIVE_DEPTH.secondaryOpacity);
+  assert.equal(outer.opacity, IMMERSIVE_DEPTH.tertiaryOpacity);
+  assert.equal(hidden.opacity, 0);
+  assert.equal(inner.interactive, true);
+  assert.equal(middle.interactive, true);
+  assert.equal(outer.interactive, true);
+  assert.equal(hidden.interactive, false);
+  assert.ok(inner.z > middle.z);
+  assert.ok(middle.z > outer.z);
+  assert.ok(inner.spread < middle.spread);
+  assert.ok(middle.spread < outer.spread);
+  assert.ok(apparentScale(0) > apparentScale(1));
   assert.ok(apparentScale(1) > apparentScale(2));
-  assert.ok(front.opacity > middle.opacity);
-  assert.ok(middle.opacity > far.opacity);
-  assert.ok(middle.opacity < 0.5);
-  assert.ok(apparentScale(2) < 0.75);
-  assert.ok(apparentScale(0) > 0.9);
 });
 
-test("scrolling back through a group reverses the pass", () => {
-  const passing = poseAtDepth(-0.7);
-  const active = poseAtDepth(0);
-  assert.ok(passing.spread > active.spread);
-  assert.ok(passing.opacity < active.opacity);
-  assert.ok(passing.opacity > 0.2);
-  assert.ok(passing.scale > active.scale);
-  assert.ok(passing.scale > poseAtDepth(-0.25).scale);
-  assert.ok(passing.z > active.z);
+test("depth promotion still interpolates between the inner rings", () => {
+  const restingOuter = poseAtDepth(1);
+  const approaching = poseAtDepth(0.5);
+  const arrived = poseAtDepth(0);
+  assert.ok(approaching.z > restingOuter.z);
+  assert.ok(apparentScale(0.5) > apparentScale(1));
+  assert.ok(apparentScale(0.5) < apparentScale(0) * 1.2);
+  assert.ok(approaching.spread > arrived.spread);
+  assert.equal(approaching.opacity, 1);
+  assert.equal(approaching.interactive, true);
+
+  const leaving = poseAtDepth(-0.7);
+  assert.equal(leaving.opacity, 0);
+  assert.equal(leaving.interactive, false);
+  assert.ok(leaving.z < arrived.z);
+  assert.ok(apparentScale(-0.2) < apparentScale(0));
+
+  assert.equal(poseAtDepth(2).opacity, 1);
+  assert.equal(poseAtDepth(3).opacity, 0);
+
   assert.deepEqual(
     projectCandidate(
       { group: 1, x: 0.8, y: -0.2, tiltX: 1, tiltY: -1, presence: 1 },
@@ -97,6 +120,24 @@ test("progress stays inside the available groups", () => {
   assert.equal(clampProgress(-2, 4), 0);
   assert.equal(clampProgress(9, 4), 3);
   assert.equal(clampProgress(1.2, 1), 0);
+});
+
+test("activity scroll can overshoot so the last ring exits inward", () => {
+  assert.equal(activityScrollSpan(5), 4);
+  assert.equal(activityScrollMax(5), 4 + IMMERSIVE_DEPTH.exitOvershoot);
+  assert.equal(activityScrollMax(1), IMMERSIVE_DEPTH.exitOvershoot);
+  assert.equal(activityScrollMax(5, false), 4);
+  assert.equal(activityScrollMax(0), 0);
+
+  const lastGroup = 4;
+  const gone = projectCandidate(
+    { group: lastGroup, x: 1, y: 0, tiltX: 0, tiltY: 0, presence: 1 },
+    activityScrollMax(5),
+    400,
+    400,
+  );
+  assert.equal(gone.opacity, 0);
+  assert.equal(gone.interactive, false);
 });
 
 test("orbital slots are deterministic and stay off the centre", () => {

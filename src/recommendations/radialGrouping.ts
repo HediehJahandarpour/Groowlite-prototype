@@ -5,7 +5,12 @@ import type { ProcessToken } from "../process/processTypes";
 import { selectedPhaseColourAmount } from "./activityFilters";
 import { rankActivities, type RankedActivity } from "./rankingEngine";
 import { readProcessContext, type ProcessContext } from "./processContext";
-import { LAYER_CAPACITIES, PHASE_EXPLANATION, RECOMMENDATION_WEIGHTS } from "./recommendationConfig";
+import {
+  LAYER_CAPACITIES,
+  layerCapacitiesFor,
+  PHASE_EXPLANATION,
+  RECOMMENDATION_WEIGHTS,
+} from "./recommendationConfig";
 
 /**
  * Place a ranked list onto radial layers.
@@ -175,7 +180,7 @@ export function activityLayersFor(
   insertionIndex: number,
   pool: readonly ActivityRecord[] = ACTIVITY_REGISTRY,
   colourPhases: readonly PhaseId[] = [],
-  capacities: readonly number[] = LAYER_CAPACITIES,
+  capacities?: readonly number[],
 ): { ranked: RankedActivity[]; ordered: RankedActivity[]; layers: ActivityRecord[][]; context: ProcessContext } {
   const activities = pool.slice();
   const context = readProcessContext(tokens, insertionIndex, ACTIVITY_REGISTRY);
@@ -190,10 +195,11 @@ export function activityLayersFor(
     colourPhases.length > 0
       ? orderByPhaseColour(ranked, activities, colourPhases)
       : orderSuggestions(ranked, activities, context);
+  const buckets = capacities ?? layerCapacitiesFor(activities.length);
   return {
     ranked,
     ordered,
-    layers: distributeIntoLayers(ordered, activities, capacities),
+    layers: distributeIntoLayers(ordered, activities, buckets),
     context,
   };
 }

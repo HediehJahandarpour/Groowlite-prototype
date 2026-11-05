@@ -5,7 +5,9 @@ import type {
 } from "react";
 import { useEffect, useRef, useState } from "react";
 import { gridStyle, worldTransform, type CanvasView } from "../canvas/view";
+import { normalizeRect, type ScreenRect } from "../process/multiSelect";
 import "./Canvas.css";
+import "./MultiTokenChrome.css";
 
 type CanvasProps = {
   viewportRef: RefObject<HTMLDivElement | null>;
@@ -19,6 +21,15 @@ type CanvasProps = {
   ) => void;
   /** A click on empty canvas, after a press that did not pan. */
   onBackgroundClick?: () => void;
+  /**
+   * When true (Select tool), empty-canvas drag draws a selection rectangle.
+   * When false, empty-canvas drag pans. Space + drag also pans in either mode.
+   */
+  boxSelectEnabled?: boolean;
+  /** Live preview of tokens under the drag rectangle. */
+  onBoxSelectMove?: (rect: ScreenRect | null, additive: boolean) => void;
+  /** Commit the drag rectangle. Null means the gesture stayed a click. */
+  onBoxSelectEnd?: (rect: ScreenRect | null, additive: boolean) => void;
   /** SVG process tokens, in world coordinates, can be passed here later. */
   children?: ReactNode;
   /** Blocks pan and zoom while the exploration camera owns the view. */
@@ -27,6 +38,8 @@ type CanvasProps = {
   atmosphere?: number;
   atmosphereRef?: (node: HTMLDivElement | null) => void;
 };
+
+const BOX_THRESHOLD_PX = 4;
 
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -52,6 +65,9 @@ export function Canvas({
   onPanBy,
   onZoomBy,
   onBackgroundClick,
+  boxSelectEnabled = false,
+  onBoxSelectMove,
+  onBoxSelectEnd,
   children,
   locked = false,
   atmosphere = 0,
@@ -59,11 +75,27 @@ export function Canvas({
 }: CanvasProps) {
   const [spaceDown, setSpaceDown] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [boxRect, setBoxRect] = useState<ScreenRect | null>(null);
   const spaceRef = useRef(false);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
-  const gestureRef = useRef<{ x: number; y: number; background: boolean } | null>(null);
+  const gestureRef = useRef<{
+    x: number;
+    y: number;
+    localX: number;
+    localY: number;
+    background: boolean;
+    mode: "pan" | "box";
+    additive: boolean;
+    boxing: boolean;
+  } | null>(null);
   const lockedRef = useRef(locked);
+  const boxSelectRef = useRef(boxSelectEnabled);
+  const onBoxSelectMoveRef = useRef(onBoxSelectMove);
+  const onBoxSelectEndRef = useRef(onBoxSelectEnd);
   lockedRef.current = locked;
+  boxSelectRef.current = boxSelectEnabled;
+  onBoxSelectMoveRef.current = onBoxSelectMove;
+  onBoxSelectEndRef.current = onBoxSelectEnd;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -151,18 +183,27 @@ export function Canvas({
       target instanceof Element &&
       Boolean(
         target.closest(
-          "button, a, input, textarea, .activity-filter, .process-token, .token-toolbar, .token-grip",
+          "button, a, input, textarea, .activity-filter, .process-token, .token-toolbar, .multi-toolbar, .multi-selection, .token-grip",
         ),
       );
     if (startedOnControl) return;
 
+    const point = localPoint(event.currentTarget, event.clientX, event.clientY);
+    const wantBox =
+      boxSelectRef.current && !spaceRef.current && event.target === event.currentTarget;
     gestureRef.current = {
       x: event.clientX,
       y: event.clientY,
+      localX: point.x,
+      localY: point.y,
       background: event.target === event.currentTarget,
+      mode: wantBox ? "box" : "pan",
+      additive: event.shiftKey,
+      boxing: false,
     };
     dragRef.current = { x: event.clientX, y: event.clientY };
     setDragging(true);
+    setBoxRect(null);
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -172,7 +213,20 @@ export function Canvas({
 
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
-    if (!drag) return;
+    const gesture = gestureRef.current;
+    if (!drag || !gesture) return;
+
+    if (gesture.mode === "box") {
+      const moved = Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y);
+      if (!gesture.boxing && moved < BOX_THRESHOLD_PX) return;
+      const point = localPoint(event.currentTarget, event.clientX, event.clientY);
+      const rect = normalizeRect(gesture.localX, gesture.localY, point.x, point.y);
+      gesture.boxing = true;
+      setBoxRect(rect);
+      onBoxSelectMoveRef.current?.(rect, gesture.additive);
+      return;
+    }
+
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
     dragRef.current = { x: event.clientX, y: event.clientY };
@@ -185,10 +239,26 @@ export function Canvas({
     dragRef.current = null;
     gestureRef.current = null;
     setDragging(false);
-    if (gesture?.background && onBackgroundClick) {
+    setBoxRect(null);
+
+    if (gesture?.mode === "box") {
+      if (gesture.boxing) {
+        const point = localPoint(event.currentTarget, event.clientX, event.clientY);
+        const rect = normalizeRect(gesture.localX, gesture.localY, point.x, point.y);
+        onBoxSelectMoveRef.current?.(null, false);
+        onBoxSelectEndRef.current?.(rect, gesture.additive);
+      } else if (gesture.background && onBackgroundClick) {
+        onBoxSelectMoveRef.current?.(null, false);
+        onBoxSelectEndRef.current?.(null, false);
+        onBackgroundClick();
+      } else {
+        onBoxSelectMoveRef.current?.(null, false);
+      }
+    } else if (gesture?.background && onBackgroundClick) {
       const moved = Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y);
       if (moved < 5) onBackgroundClick();
     }
+
     try {
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
@@ -198,11 +268,14 @@ export function Canvas({
     }
   }
 
+  const panCursor = !locked && (!boxSelectEnabled || spaceDown);
   const className = [
     "canvas",
     locked ? "canvas--locked" : "",
-    spaceDown && !locked ? "canvas--pan-ready" : "",
-    dragging ? "canvas--panning" : "",
+    panCursor ? "canvas--pan-ready" : "",
+    !locked && boxSelectEnabled && !spaceDown ? "canvas--select-ready" : "",
+    dragging && !boxRect ? "canvas--panning" : "",
+    boxRect ? "canvas--boxing" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -231,6 +304,17 @@ export function Canvas({
       >
         <div className="canvas__tokens">{children}</div>
       </div>
+      {boxRect ? (
+        <div
+          className="box-select-rect"
+          style={{
+            left: boxRect.x,
+            top: boxRect.y,
+            width: boxRect.width,
+            height: boxRect.height,
+          }}
+        />
+      ) : null}
     </div>
   );
 }

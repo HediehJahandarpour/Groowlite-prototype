@@ -12,7 +12,7 @@ import {
   restingPoses,
   type DropCandidate,
 } from "../process/dragTargets";
-import { moveProcessBlock, spanForToken } from "../process/reorderToken";
+import { moveProcessBlock, spanForDrag } from "../process/reorderToken";
 import type { Point, ProcessToken } from "../process/processTypes";
 
 type Session = {
@@ -48,12 +48,19 @@ function clientToLocal(viewport: HTMLElement, clientX: number, clientY: number) 
   return { x: clientX - rect.left, y: clientY - rect.top };
 }
 
+export type SelectOptions = {
+  /** Shift-click toggles membership without clearing the rest. */
+  toggle?: boolean;
+};
+
 type UseProcessDragArgs = {
   tokens: ProcessToken[];
   view: CanvasView;
   viewportRef: RefObject<HTMLDivElement | null>;
+  /** Current selection; a contiguous multi-select drags as one block. */
+  selectedIds?: readonly string[];
   onReorder: (tokens: ProcessToken[]) => void;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, options?: SelectOptions) => void;
   onPanBy: (dx: number, dy: number) => void;
   onCloseMenu: () => void;
 };
@@ -66,6 +73,7 @@ export function useProcessDrag({
   tokens,
   view,
   viewportRef,
+  selectedIds = [],
   onReorder,
   onSelect,
   onPanBy,
@@ -73,12 +81,14 @@ export function useProcessDrag({
 }: UseProcessDragArgs) {
   const tokensRef = useRef(tokens);
   const viewRef = useRef(view);
+  const selectedIdsRef = useRef(selectedIds);
   const onReorderRef = useRef(onReorder);
   const onSelectRef = useRef(onSelect);
   const onPanByRef = useRef(onPanBy);
   const onCloseMenuRef = useRef(onCloseMenu);
   tokensRef.current = tokens;
   viewRef.current = view;
+  selectedIdsRef.current = selectedIds;
   onReorderRef.current = onReorder;
   onSelectRef.current = onSelect;
   onPanByRef.current = onPanBy;
@@ -316,7 +326,7 @@ export function useProcessDrag({
     const viewport = viewportRef.current;
     if (!viewport) return;
     const baseTokens = tokensRef.current;
-    const span = spanForToken(baseTokens, pending.id);
+    const span = spanForDrag(baseTokens, pending.id, selectedIdsRef.current);
     if (!span) return;
     const local = clientToLocal(viewport, clientX, clientY);
     const startWorld = screenToWorld(viewRef.current, local.x, local.y);
@@ -412,7 +422,16 @@ export function useProcessDrag({
       }
       if (pending && event.pointerId === pending.pointerId && !drag) {
         pendingRef.current = null;
-        onSelectRef.current(pending.id);
+        const selected = selectedIdsRef.current;
+        // Keep a multi-selection when clicking a token that is already in it.
+        if (
+          !event.shiftKey &&
+          selected.length >= 2 &&
+          selected.includes(pending.id)
+        ) {
+          return;
+        }
+        onSelectRef.current(pending.id, { toggle: event.shiftKey });
       }
     }
 
@@ -493,7 +512,7 @@ export function useProcessDrag({
 
   function beginGesture(id: string, event: ReactPointerEvent) {
     if (event.button !== 0 || sessionRef.current) return;
-    if (!spanForToken(tokensRef.current, id)) return;
+    if (!spanForDrag(tokensRef.current, id, selectedIdsRef.current)) return;
     event.stopPropagation();
     event.preventDefault();
     pendingRef.current = {

@@ -19,6 +19,11 @@ type ActivityFilterPanelProps = {
   collapsible?: boolean;
   /** Draw in place. The explorer centres this on the gradient instead of portaling it. */
   embedded?: boolean;
+  /**
+   * Top-centre global search bar.
+   * Used by the unified immersive explorer.
+   */
+  global?: boolean;
   viewport: HTMLElement | null;
   query: string;
   phases: readonly PhaseId[];
@@ -36,6 +41,7 @@ export function ActivityFilterPanel({
   open,
   collapsible = false,
   embedded = false,
+  global = false,
   viewport,
   query,
   phases,
@@ -44,6 +50,116 @@ export function ActivityFilterPanel({
   onTogglePhase,
   onClear,
 }: ActivityFilterPanelProps) {
+  if (global) {
+    return <GlobalTokenSearch open={open} query={query} onQuery={onQuery} />;
+  }
+
+  return (
+    <LegacyActivityFilterPanel
+      open={open}
+      collapsible={collapsible}
+      embedded={embedded}
+      viewport={viewport}
+      query={query}
+      phases={phases}
+      empty={empty}
+      onQuery={onQuery}
+      onTogglePhase={onTogglePhase}
+      onClear={onClear}
+    />
+  );
+}
+
+function GlobalTokenSearch({
+  open,
+  query,
+  onQuery,
+}: {
+  open: boolean;
+  query: string;
+  onQuery: (value: string) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!open || !root) return;
+    function blockWheel(event: WheelEvent) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    root.addEventListener("wheel", blockWheel, { passive: false, capture: true });
+    return () => {
+      root.removeEventListener("wheel", blockWheel, { capture: true });
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <aside
+      ref={rootRef}
+      className="global-token-search"
+      aria-label="Search all tokens"
+      onPointerDown={stopCanvas}
+      onWheel={stopCanvas}
+    >
+      <div className="global-token-search__bar">
+        <img
+          className="global-token-search__icon"
+          src={searchIcon}
+          alt=""
+          width={18}
+          height={18}
+        />
+        <input
+          type="text"
+          value={query}
+          placeholder="Search all tokens..."
+          aria-label="Search all tokens"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => onQuery(event.target.value)}
+        />
+        {query.length > 0 ? (
+          <button
+            type="button"
+            className="global-token-search__clear"
+            aria-label="Clear search"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onQuery("")}
+          >
+            ×
+          </button>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function LegacyActivityFilterPanel({
+  open,
+  collapsible = false,
+  embedded = false,
+  viewport,
+  query,
+  phases,
+  empty,
+  onQuery,
+  onTogglePhase,
+  onClear,
+}: {
+  open: boolean;
+  collapsible?: boolean;
+  embedded?: boolean;
+  viewport: HTMLElement | null;
+  query: string;
+  phases: readonly PhaseId[];
+  empty: boolean;
+  onQuery: (value: string) => void;
+  onTogglePhase: (phase: PhaseId) => void;
+  onClear: () => void;
+}) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(!collapsible);
   const filtersActive = query.trim().length > 0 || phases.length > 0;
@@ -62,7 +178,8 @@ export function ActivityFilterPanel({
     if (!collapsible || !expanded) return;
     function onPointerDown(event: PointerEvent) {
       const panel = panelRef.current;
-      if (!panel || !(event.target instanceof Node) || panel.contains(event.target)) return;
+      if (!panel || !(event.target instanceof Node) || panel.contains(event.target))
+        return;
       if (filtersActive) return;
       setExpanded(false);
     }

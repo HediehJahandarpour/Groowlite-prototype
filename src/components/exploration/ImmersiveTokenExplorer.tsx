@@ -11,12 +11,15 @@ import gsap from "gsap";
 import { Redo2, Undo2 } from "lucide-react";
 import { ACTIVITY_REGISTRY } from "../../data/activityRegistry";
 import type { PhaseId } from "../../data/phasePalette";
-import { applyActivityFilters } from "../../recommendations/activityFilters";
+import {
+  applyActivityFilters,
+  PHASE_FILTERS,
+} from "../../recommendations/activityFilters";
+import { searchTokenLibrary } from "../../recommendations/tokenSearch";
 import { readProcessContext } from "../../recommendations/processContext";
 import { activityLayersFor } from "../../recommendations/radialGrouping";
 import { phaseRgb, type Rgb } from "../../process/activityMotion";
 import {
-  MENU_CATEGORIES,
   TOKEN_CATALOG,
   type CatalogEntry,
   type MenuCategory,
@@ -24,7 +27,13 @@ import {
 import type { ProcessToken } from "../../process/processTypes";
 import type { ScreenRect } from "../../exploration/cameraFocus";
 import { explorationIndex } from "../../exploration/contextToken";
-import { avoidProcessZone } from "../../exploration/exclusionZone";
+import { fitActivityCircle } from "../../exploration/exclusionZone";
+import {
+  activityScrollMax,
+  activityScrollSpan,
+  IMMERSIVE_DEPTH,
+  poseAtDepth,
+} from "../../exploration/depthPose";
 import {
   EXPLORER_MOTION,
   prefersReducedMotion,
@@ -33,15 +42,27 @@ import {
   IMMERSIVE_SCROLL,
   useImmersiveScroll,
 } from "../../exploration/immersiveScroll";
-import { outerPlateScale, plateScale } from "../../exploration/plateGrowth";
+import {
+  outerPlateScale,
+  plateOuterRadius,
+  plateScale,
+  plateStrokeRadius,
+} from "../../exploration/plateGrowth";
 import { GRADIENT_VIEW } from "../../process/activityGradient";
-import { placeCandidates } from "../../exploration/spatialLayout";
-import { ActivityFilterPanel } from "../ActivityFilterPanel";
+import {
+  evenRingSpacing,
+  placeCandidates,
+} from "../../exploration/spatialLayout";
+import {
+  ActivityFilterPanel,
+  PhaseFilterPill,
+} from "../ActivityFilterPanel";
 import { ExplorerDepthPlate } from "./ExplorerDepthPlate";
 import {
   FloatingTokenScene,
   type ExplorerMotionHandle,
 } from "./FloatingTokenScene";
+import { PersistentPhaseArc } from "./PersistentPhaseArc";
 import "./ImmersiveTokenExplorer.css";
 
 const EMPTY_ZONES: ScreenRect[] = [];
@@ -82,25 +103,31 @@ function sceneMetrics(width: number, height: number) {
   const mid = width < 1100;
   const short = height < 780;
   const center = compact ? 112 : mid ? 188 : 232;
-  const token = compact ? 70 : mid ? 104 : 122;
-  const clearance = center * 0.5 + token * 0.55 + (compact ? 20 : 36);
+  // Radar base: inner tokens are 130px on desktop (middle 100, outer 90).
+  const token = 130 * (compact ? 0.62 : mid ? 0.82 : 1);
+  const clearance = center * 0.42 + token * 0.5 + (compact ? 16 : 28);
   const reachX = Math.min(
-    Math.max(width * (compact ? 0.26 : 0.2), clearance / 0.7),
-    width * 0.26,
-    340,
+    Math.max(width * (compact ? 0.34 : 0.32), clearance / 0.55),
+    width * 0.42,
+    compact ? 320 : 520,
   );
   const reachY = Math.min(
-    Math.max(height * (short ? 0.12 : 0.18), clearance / 1.2),
-    height * (short ? 0.16 : 0.26),
-    short ? 160 : 280,
+    Math.max(height * (short ? 0.3 : 0.4), clearance / 0.7),
+    height * (short ? 0.44 : 0.48),
+    short ? 320 : 440,
   );
+  const orbit = Math.min(reachX, reachY);
   return {
     center,
     token,
-    reachX,
-    reachY,
+    reachX: orbit,
+    reachY: orbit,
     anchor: short ? "36%" : "46%",
   };
+}
+
+function hasPhaseToken(tokens: ProcessToken[]) {
+  return tokens.some((token) => token.type === "phase");
 }
 
 export function ImmersiveTokenExplorer({
@@ -132,14 +159,24 @@ export function ImmersiveTokenExplorer({
     rootRef.current = node;
     setHost((current) => (current === node ? current : node));
   }, []);
-  const [query, setQuery] = useState("");
-  const [phases, setPhases] = useState<PhaseId[]>([]);
+
+  // Separate explorer UI states — never merged.
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedPhaseFilters, setSelectedPhaseFilters] = useState<PhaseId[]>(
+    [],
+  );
+
   const wasOpen = useRef(open);
   const justOpened = open && !wasOpen.current;
   const [hintDismissed, setHintDismissed] = useState(false);
-  if (justOpened && query !== "") setQuery("");
+  if (justOpened && searchQuery !== "") setSearchQuery("");
   if (justOpened && hintDismissed) setHintDismissed(false);
   wasOpen.current = open;
+
+  const processStarted = hasPhaseToken(frame.tokens);
+  const phaseOnly = open && !processStarted;
+  const unified = open && processStarted && frame.mode !== "checkpoint";
+  const searching = searchQuery.trim().length > 0 && unified;
 
   const index = explorationIndex(
     frame.tokens,
@@ -152,118 +189,197 @@ export function ImmersiveTokenExplorer({
     ACTIVITY_REGISTRY,
   ).activePhase;
   const trackedPhase = useRef<PhaseId | null>(null);
-  const trackingActivities = useRef(false);
-  const onActivities = open && frame.mode === "activity";
-  if (onActivities && contextPhase) {
+  const trackingUnified = useRef(false);
+  if (unified && contextPhase) {
     const phaseChanged = trackedPhase.current !== contextPhase;
-    if (justOpened || !trackingActivities.current || phaseChanged) {
+    if (justOpened || !trackingUnified.current || phaseChanged) {
       trackedPhase.current = contextPhase;
-      if (phases.length !== 1 || phases[0] !== contextPhase) {
-        setPhases([contextPhase]);
+      if (
+        selectedPhaseFilters.length !== 1 ||
+        selectedPhaseFilters[0] !== contextPhase
+      ) {
+        setSelectedPhaseFilters([contextPhase]);
       }
     }
   }
-  trackingActivities.current = onActivities;
-  const visibleActivities = useMemo(
-    () =>
-      frame.mode === "activity"
-        ? applyActivityFilters(ACTIVITY_REGISTRY, { query, phases })
-        : [],
-    [frame.mode, query, phases],
+  trackingUnified.current = unified;
+
+  // Manual phase filters drive the radar. Search ignores them while active.
+  const visibleActivities = useMemo(() => {
+    if (phaseOnly || frame.mode === "checkpoint") return [];
+    if (searching) return [];
+    return applyActivityFilters(ACTIVITY_REGISTRY, {
+      query: "",
+      phases: selectedPhaseFilters,
+    });
+  }, [phaseOnly, frame.mode, searching, selectedPhaseFilters]);
+
+  const searchHits = useMemo(
+    () => (searching ? searchTokenLibrary(searchQuery) : []),
+    [searching, searchQuery],
   );
-  const filterKey = `${query}|${phases.join(",")}`;
+
+  const filterKey = selectedPhaseFilters.join(",");
   const activityLayers = useRef(
-    activityLayersFor(frame.tokens, index, visibleActivities, phases).layers,
+    activityLayersFor(
+      frame.tokens,
+      index,
+      visibleActivities,
+      selectedPhaseFilters,
+    ).layers,
   );
   const sceneMode = useRef(frame.mode);
   const sceneFilter = useRef(filterKey);
   const sceneWasOpen = useRef(false);
+  const sceneSearching = useRef(false);
   const refreshActivities =
-    frame.mode === "activity" &&
+    unified &&
+    !searching &&
     (activityLayers.current.length === 0 ||
       sceneMode.current !== "activity" ||
       sceneFilter.current !== filterKey ||
+      sceneSearching.current ||
       (open && !sceneWasOpen.current));
   if (refreshActivities) {
     activityLayers.current = activityLayersFor(
       frame.tokens,
       index,
       visibleActivities,
-      phases,
+      selectedPhaseFilters,
     ).layers;
   }
-  sceneMode.current = frame.mode;
+  sceneMode.current = unified ? "activity" : frame.mode;
   sceneFilter.current = filterKey;
   sceneWasOpen.current = open;
+  sceneSearching.current = searching;
+
+  const searchLayers = useMemo(() => {
+    if (!searching) return [];
+    // Phases stay on the persistent outer arc — avoid duplicating them here.
+    const results = searchHits.filter((hit) => hit.type !== "phase");
+    // Stable relevance rings — not contextual ranking seats.
+    const capacity = 10;
+    const rings: CatalogEntry[][] = [];
+    for (let i = 0; i < results.length; i += capacity) {
+      rings.push(results.slice(i, i + capacity));
+    }
+    return rings;
+  }, [searching, searchHits]);
+
   const phaseLayers = useMemo(() => [TOKEN_CATALOG.phase], []);
   const checkpointLayers = useMemo(() => [TOKEN_CATALOG.checkpoint], []);
-  const layers =
-    frame.mode === "phase"
-      ? phaseLayers
-      : frame.mode === "checkpoint"
-        ? checkpointLayers
+
+  const layers = phaseOnly
+    ? phaseLayers
+    : frame.mode === "checkpoint"
+      ? checkpointLayers
+      : searching
+        ? searchLayers
         : activityLayers.current;
+
   const candidates = useMemo(() => placeCandidates(layers), [layers]);
-  const contextWash = phaseRgb(
-    phases.length === 1
-      ? phases[0]
-      : readProcessContext(frame.tokens, index, ACTIVITY_REGISTRY).activePhase,
+  // Blue wash is only for the initial phase picker. Once the process has a
+  // phase, the radar uses that process phase's colour — not the selector blue.
+  const processWash = phaseRgb(
+    readProcessContext(frame.tokens, index, ACTIVITY_REGISTRY).activePhase,
   );
-  const activityWash = useRef(contextWash);
-  if (refreshActivities) activityWash.current = contextWash;
-  const wash =
-    frame.mode === "phase"
-      ? SELECTOR_BLUE
-      : frame.mode === "activity"
-        ? activityWash.current
-        : contextWash;
+  const wash = phaseOnly ? SELECTOR_BLUE : processWash;
   const groupCount = layers.length;
-  const resetKey =
-    frame.mode === "activity" ? `activity|${filterKey}` : frame.mode;
-  const scrollSpan = Math.max(0, groupCount - 1);
+  const resetKey = phaseOnly
+    ? "phase-only"
+    : searching
+      ? `search|${searchQuery.trim()}`
+      : unified
+        ? `unified|${filterKey}`
+        : frame.mode;
+  // Promote through every activity layer, then one more unit so the last
+  // ring exits inward and vanishes. Phase-only keeps a fixed ring.
+  const scrollSpan = activityScrollSpan(groupCount);
+  const scrollMax = activityScrollMax(
+    groupCount,
+    !phaseOnly && frame.mode !== "checkpoint",
+  );
   const { nudge, subscribe, settle } = useImmersiveScroll(
-    scrollSpan,
+    scrollMax,
     open,
     resetKey,
   );
   const metrics = useViewportMetrics(host);
-  const reachX =
-    frame.mode === "phase"
-      ? Math.min(metrics.reachX, metrics.reachY)
-      : metrics.reachX;
-  const reachY =
-    frame.mode === "phase"
-      ? Math.min(metrics.reachX, metrics.reachY)
-      : metrics.reachY;
   const anchor = { x: metrics.width * 0.5, y: metrics.height * 0.5 };
-  const settled = useMemo(
-    () =>
-      avoidProcessZone(candidates, zones, {
+  const orbit = Math.min(metrics.reachX, metrics.reachY);
+  const radarOuter = plateOuterRadius(metrics.width, metrics.height);
+  const phaseCircleRadius = plateStrokeRadius(
+    metrics.width,
+    metrics.height,
+    0,
+  );
+  const fitted = useMemo(() => {
+    if (unified || frame.mode === "activity") {
+      return fitActivityCircle({
+        width: metrics.width,
+        height: metrics.height,
         anchorX: anchor.x,
         anchorY: anchor.y,
-        reachX,
-        reachY,
-        tokenSize: metrics.token,
-      }),
-    [anchor.x, anchor.y, candidates, metrics.token, reachX, reachY, zones],
-  );
+        zones: [],
+        fullToken: metrics.token,
+        fallbackReach: orbit,
+        points: candidates,
+        targetOuterRadius: radarOuter,
+      });
+    }
+    if (phaseOnly || frame.mode === "phase") {
+      // Sit the five phases on the innermost Figma stroke.
+      const pose = poseAtDepth(0);
+      const project =
+        IMMERSIVE_DEPTH.perspective / (IMMERSIVE_DEPTH.perspective - pose.z);
+      const target = plateStrokeRadius(metrics.width, metrics.height, 0);
+      const reach = target / (pose.spread * project);
+      return { reach, tokenSize: metrics.token };
+    }
+    return { reach: orbit, tokenSize: metrics.token };
+  }, [
+    anchor.x,
+    anchor.y,
+    candidates,
+    frame.mode,
+    metrics.height,
+    metrics.token,
+    metrics.width,
+    orbit,
+    phaseOnly,
+    radarOuter,
+    unified,
+  ]);
+  const reachX = fitted.reach;
+  const reachY = fitted.reach;
+  const tokenSize = fitted.tokenSize;
+  const settled = useMemo(() => evenRingSpacing(candidates), [candidates]);
   const coreRef = useRef<SVGGElement>(null);
   const outerRef = useRef<SVGGElement>(null);
   const breathRef = useRef<HTMLDivElement>(null);
   const hintIconRef = useRef<HTMLSpanElement>(null);
   const motionRef = useRef<ExplorerMotionHandle>(null);
+  const hintGeneration = useRef(resetKey);
+  if (hintGeneration.current !== resetKey) {
+    hintGeneration.current = resetKey;
+    if (hintDismissed) setHintDismissed(false);
+  }
   const showHint =
     open &&
-    scrollSpan > 0 &&
-    EXPLORER_MOTION.hint.enabled &&
-    (frame.mode === "activity" || !hintDismissed);
+    unified &&
+    !searching &&
+    scrollSpan > 2 &&
+    !hintDismissed &&
+    EXPLORER_MOTION.hint.enabled;
   const reveal = useRef(0);
   const scrollSpanRef = useRef(scrollSpan);
+  const scrollMaxRef = useRef(scrollMax);
   scrollSpanRef.current = scrollSpan;
+  scrollMaxRef.current = scrollMax;
 
   function choose(entry: CatalogEntry) {
     onPick(entry);
-    if (entry.type === "phase") onMode("activity");
+    if (entry.type === "phase" && !processStarted) onMode("activity");
   }
 
   useEffect(() => {
@@ -273,12 +389,6 @@ export function ImmersiveTokenExplorer({
     else canvas.removeAttribute("inert");
     return () => canvas.removeAttribute("inert");
   }, [open]);
-
-  const modeRef = useRef(frame.mode);
-  modeRef.current = frame.mode;
-  const onModeRef = useRef(onMode);
-  onModeRef.current = onMode;
-  const sectionPan = useRef({ x: 0, at: 0, lock: 0 });
 
   useEffect(() => {
     const node = rootRef.current;
@@ -292,29 +402,12 @@ export function ImmersiveTokenExplorer({
           : event.deltaMode === 2
             ? window.innerHeight
             : 1;
-      const dx = event.deltaX * unit;
       const dy = event.deltaY * unit;
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 6) {
-        event.preventDefault();
-        const now = performance.now();
-        const pan = sectionPan.current;
-        if (now < pan.lock) return;
-        if (now - pan.at > 320) pan.x = 0;
-        pan.at = now;
-        pan.x += dx;
-        if (Math.abs(pan.x) < 72) return;
-        const next = pan.x > 0 ? "activity" : "phase";
-        pan.x = 0;
-        pan.lock = now + 480;
-        if (modeRef.current !== next) onModeRef.current(next);
-        motionRef.current?.notePointer();
-        return;
-      }
       const target = event.target;
       if (
         target instanceof Element &&
         target.closest(
-          ".activity-filter, .explorer-preview, .explorer-actions, .explorer-hub, .explorer-modes",
+          ".activity-filter, .global-token-search, .explorer-preview, .explorer-actions, .explorer-hub, .explorer-phase-filters",
         )
       ) {
         return;
@@ -325,10 +418,7 @@ export function ImmersiveTokenExplorer({
       if (scrollSpanRef.current > 0) return;
       const step = Math.min(
         IMMERSIVE_SCROLL.maxStep,
-        Math.max(
-          -IMMERSIVE_SCROLL.maxStep,
-          dy * IMMERSIVE_SCROLL.wheelGain,
-        ),
+        Math.max(-IMMERSIVE_SCROLL.maxStep, dy * IMMERSIVE_SCROLL.wheelGain),
       );
       reveal.current = Math.min(1, Math.max(0, reveal.current + step / 1.45));
     }
@@ -351,7 +441,7 @@ export function ImmersiveTokenExplorer({
         target instanceof Element &&
         Boolean(
           target.closest(
-            ".float-token, .activity-filter, .explorer-hub, .explorer-modes, .explorer-history, .explorer-actions, .explorer-token-card",
+            ".float-token, .activity-filter, .global-token-search, .explorer-hub, .explorer-phase-filters, .explorer-history, .explorer-actions, .explorer-token-card, .explorer-phase-arc",
           ),
         );
       start = {
@@ -369,7 +459,9 @@ export function ImmersiveTokenExplorer({
       const gesture = start;
       start = null;
       if (!gesture?.dismiss) return;
-      if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 5) {
+      if (
+        Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 5
+      ) {
         return;
       }
       onClose();
@@ -385,8 +477,9 @@ export function ImmersiveTokenExplorer({
 
   useEffect(() => {
     if (!open || atmosphere < 1) return;
+    if (phaseOnly) return;
     motionRef.current?.playOpeningTeaser();
-  }, [open, atmosphere]);
+  }, [open, atmosphere, phaseOnly]);
 
   useLayoutEffect(() => {
     const node = breathRef.current;
@@ -421,11 +514,7 @@ export function ImmersiveTokenExplorer({
   useLayoutEffect(() => {
     const icon = hintIconRef.current;
     if (!icon) return;
-    if (
-      !showHint ||
-      !EXPLORER_MOTION.hint.enabled ||
-      prefersReducedMotion()
-    ) {
+    if (!showHint || !EXPLORER_MOTION.hint.enabled || prefersReducedMotion()) {
       gsap.set(icon, { clearProps: "transform" });
       return;
     }
@@ -452,8 +541,11 @@ export function ImmersiveTokenExplorer({
       "(prefers-reduced-motion: reduce)",
     ).matches;
     const unsubscribe = subscribe((progress) => {
-      if (scrollSpanRef.current <= 0) return;
-      reveal.current = progress / scrollSpanRef.current;
+      const span = scrollSpanRef.current;
+      const max = scrollMaxRef.current;
+      if (max <= 0) return;
+      // Plate growth follows activity promotion; clamp during the exit overshoot.
+      reveal.current = span <= 0 ? 1 : Math.min(1, progress / span);
     });
     const pivot = GRADIENT_VIEW / 2;
     let coreScale = plateScale(0);
@@ -543,12 +635,20 @@ export function ImmersiveTokenExplorer({
   }, [open, subscribe, scrollSpan]);
 
   function togglePhase(phase: PhaseId) {
-    setPhases((current) =>
+    setSelectedPhaseFilters((current) =>
       current.includes(phase)
         ? current.filter((item) => item !== phase)
         : [...current, phase],
     );
   }
+
+  const ariaLabel = phaseOnly
+    ? "Choose a phase"
+    : frame.mode === "checkpoint"
+      ? "Choose a checkpoint"
+      : searching
+        ? "Search tokens"
+        : "Choose a token";
 
   return createPortal(
     <div
@@ -560,13 +660,7 @@ export function ImmersiveTokenExplorer({
       }
       role="dialog"
       aria-modal="true"
-      aria-label={
-        frame.mode === "phase"
-          ? "Choose a phase"
-          : frame.mode === "checkpoint"
-            ? "Choose a checkpoint"
-            : "Choose an activity"
-      }
+      aria-label={ariaLabel}
       style={{
         ["--center" as string]: `${metrics.center}px`,
         ["--anchor-x" as string]: `${anchor.x}px`,
@@ -601,7 +695,7 @@ export function ImmersiveTokenExplorer({
         candidates={settled}
         reachX={reachX}
         reachY={reachY}
-        tokenSize={metrics.token}
+        tokenSize={tokenSize}
         anchorX={anchor.x}
         anchorY={anchor.y}
         zones={zones}
@@ -609,49 +703,61 @@ export function ImmersiveTokenExplorer({
         settle={settle}
         onPick={choose}
         onUserScroll={() => {
-          if (modeRef.current === "activity") return;
           if (scrollSpanRef.current > 0) setHintDismissed(true);
         }}
         viewport={host}
       />
+      <PersistentPhaseArc
+        active={unified && !searching}
+        anchorX={anchor.x}
+        anchorY={anchor.y}
+        radius={radarOuter}
+        circleRadius={phaseCircleRadius}
+        tokenSize={metrics.token}
+        width={metrics.width}
+        height={metrics.height}
+        scrollSpan={scrollMax}
+        subscribe={subscribe}
+        onPick={choose}
+      />
       <div className="explorer-ui">
-        <div className="explorer-hub">
-          <div
-            className="explorer-modes"
-            role="group"
-            aria-label="Token category"
-          >
-            {MENU_CATEGORIES.filter((item) => item.id !== "checkpoint").map(
-              (item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={frame.mode === item.id}
-                  onClick={() => onMode(item.id)}
-                >
-                  {item.label}
-                </button>
-              ),
-            )}
+        {unified ? (
+          <ActivityFilterPanel
+            open={open}
+            global
+            viewport={host}
+            query={searchQuery}
+            phases={selectedPhaseFilters}
+            empty={
+              searching
+                ? searchHits.length === 0
+                : visibleActivities.length === 0
+            }
+            onQuery={setSearchQuery}
+            onTogglePhase={togglePhase}
+            onClear={() => setSelectedPhaseFilters([])}
+          />
+        ) : null}
+        {unified && !searching ? (
+          <div className="explorer-hub">
+            <div
+              className="explorer-phase-filters"
+              role="group"
+              aria-label="Filter activities by phase"
+            >
+              {PHASE_FILTERS.map((phase) => (
+                <PhaseFilterPill
+                  key={phase.id}
+                  id={phase.id}
+                  label={phase.label}
+                  color={phase.color}
+                  pressed={selectedPhaseFilters.includes(phase.id)}
+                  onToggle={togglePhase}
+                />
+              ))}
+            </div>
           </div>
-          {frame.mode === "activity" ? (
-            <ActivityFilterPanel
-              open={open}
-              collapsible
-              embedded
-              viewport={host}
-              query={query}
-              phases={phases}
-              empty={visibleActivities.length === 0}
-              onQuery={setQuery}
-              onTogglePhase={togglePhase}
-              onClear={() => {
-                setQuery("");
-                setPhases([]);
-              }}
-            />
-          ) : null}
-        </div>
+        ) : null}
         <div className="explorer-actions">
           <div className="explorer-history" aria-label="History">
             <button
@@ -684,13 +790,17 @@ export function ImmersiveTokenExplorer({
           data-hidden={showHint ? "false" : "true"}
           aria-hidden={showHint ? undefined : true}
         >
-          <span className="explorer-hint__icon" ref={hintIconRef} aria-hidden="true">
+          <span
+            className="explorer-hint__icon"
+            ref={hintIconRef}
+            aria-hidden="true"
+          >
             <svg viewBox="0 0 24 24" width="15" height="15">
               <rect x="7" y="2.5" width="10" height="19" rx="5" />
               <path d="M12 7v3.2" />
             </svg>
           </span>
-          Scroll to explore more tokens
+          Scroll to explore more activities
         </p>
       </div>
     </div>,
@@ -733,7 +843,9 @@ function pointInRadar(x: number, y: number) {
   const tokens = document.querySelectorAll(".immersive-explorer .float-token");
   for (const token of tokens) {
     if (!(token instanceof HTMLElement)) continue;
-    const fade = Number.parseFloat(token.style.getPropertyValue("--fade") || "0");
+    const fade = Number.parseFloat(
+      token.style.getPropertyValue("--fade") || "0",
+    );
     if (fade < 0.2) continue;
     if (pointInside(token, x, y)) return true;
   }

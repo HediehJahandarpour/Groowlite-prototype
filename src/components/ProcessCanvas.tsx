@@ -3,24 +3,34 @@ import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import gsap from "gsap";
 import type { CanvasView } from "../canvas/view";
 import { EXPLORATION } from "../exploration/explorationConfig";
-import type { ScreenRect } from "../exploration/cameraFocus";
+import type { ScreenRect as ZoneRect } from "../exploration/cameraFocus";
 import type { ProcessSplit, SplitPose } from "../exploration/processSplit";
 import { DRAG } from "../process/dragConfig";
 import type { DragPose } from "../process/dragPose";
 import { slotPolygon } from "../process/dragTargets";
 import { nextAddSeam } from "../process/editToken";
+import {
+  collectiveSelectionBounds,
+  selectableOutline,
+  selectedInProcessOrder,
+  tokensIntersectingRect,
+  type ScreenRect,
+} from "../process/multiSelect";
 import { layoutProcess, tokenWorldOutline } from "../process/processLayout";
 import { geometryFor, polygonPoints } from "../process/tokenGeometry";
 import type { CatalogEntry, MenuCategory } from "../process/tokenCatalog";
 import type { PlacedToken, Point, ProcessToken } from "../process/processTypes";
-import { useProcessDrag } from "./useProcessDrag";
+import { useProcessDrag, type SelectOptions } from "./useProcessDrag";
 import { InsertionMenu } from "./InsertionMenu";
+import { MultiTokenChrome } from "./MultiTokenChrome";
 import { ProcessTokenView } from "./ProcessToken";
-import { TokenChrome } from "./TokenChrome";
+import { SelectedTokenOutline, TokenChrome } from "./TokenChrome";
 import "./ProcessCanvas.css";
 
-const EMPTY_ZONES: ScreenRect[] = [];
+const EMPTY_ZONES: ZoneRect[] = [];
 const IDENTITY_SHIFT: SplitPose = { x: 0, y: 0, scale: 1, opacity: 1 };
+/** World padding around the collective multi-selection boundary. */
+const MULTI_BOUNDS_PAD = 14;
 
 type ProcessCanvasProps = {
   tokens: ProcessToken[];
@@ -39,12 +49,24 @@ type ProcessCanvasProps = {
   onCloseMenu: () => void;
   viewportRef: RefObject<HTMLDivElement | null>;
   view: CanvasView;
-  selectedId: string | null;
+  selectedIds: readonly string[];
+  /** Live marquee highlight while dragging a selection rectangle. */
+  marqueeRect: ScreenRect | null;
+  /** Shift-marquee keeps the existing selection highlighted. */
+  marqueeAdditive: boolean;
+  /** Lets the parent resolve box-select hits against current layout. */
+  hitTestRef: RefObject<(rect: ScreenRect) => string[]>;
   replaceId: string | null;
-  onSelect: (id: string) => void;
+  /** Only the Select tool may pick or drag tokens. */
+  selectionEnabled?: boolean;
+  onSelect: (id: string, options?: SelectOptions) => void;
   gapOpen: boolean;
   onRemove: () => void;
+  onRotate: () => void;
   onSwitch: () => void;
+  onCopySelected: () => void;
+  onExportSelected: () => void;
+  onReflectSelected?: () => void;
   onReorder: (tokens: ProcessToken[]) => void;
   onPanBy: (dx: number, dy: number) => void;
   explorationActive?: boolean;
@@ -72,12 +94,20 @@ export function ProcessCanvas({
   onCloseMenu,
   viewportRef,
   view,
-  selectedId,
+  selectedIds,
+  marqueeRect,
+  marqueeAdditive,
+  hitTestRef,
   replaceId,
+  selectionEnabled = true,
   onSelect,
   gapOpen,
   onRemove,
+  onRotate,
   onSwitch,
+  onCopySelected,
+  onExportSelected,
+  onReflectSelected,
   onReorder,
   onPanBy,
   explorationActive = false,
@@ -99,6 +129,7 @@ export function ProcessCanvas({
     tokens,
     view,
     viewportRef,
+    selectedIds,
     onReorder,
     onSelect,
     onPanBy,
@@ -113,10 +144,40 @@ export function ProcessCanvas({
   const pentagonImage = seated ? `/tokens/${seated.asset}` : undefined;
   const pentagonArt = seated ? phaseArt(seated) : undefined;
   const seatedDragged = Boolean(seated && hidden.has(seated.id));
-  const selectedOutline =
-    dragging ? null : selectionOutline(placed, displayTokens, selectedId);
+  const selectedId = selectedIds.length === 1 ? selectedIds[0] : null;
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const marqueeIds = useMemo(() => {
+    if (!marqueeRect || dragging) return [] as string[];
+    return tokensIntersectingRect(placed, displayTokens, view, marqueeRect);
+  }, [marqueeRect, dragging, placed, displayTokens, view]);
+  const highlightIds = useMemo(() => {
+    if (!marqueeRect) return selectedSet;
+    if (marqueeAdditive) {
+      const next = new Set(selectedSet);
+      for (const id of marqueeIds) next.add(id);
+      return next;
+    }
+    return new Set(marqueeIds);
+  }, [marqueeRect, marqueeAdditive, marqueeIds, selectedSet]);
+  const multiSelected =
+    !dragging && !marqueeRect && selectedIds.length >= 2;
+  const singleOutline =
+    dragging || marqueeRect || selectedIds.length !== 1
+      ? null
+      : selectableOutline(placed, displayTokens, selectedIds[0]);
+  const multiBounds = multiSelected
+    ? collectiveSelectionBounds(
+        placed,
+        displayTokens,
+        selectedIds,
+        MULTI_BOUNDS_PAD / Math.max(view.scale, 0.001),
+      )
+    : null;
   const switchOrigin =
-    replaceId && selectedOutline ? centroidOf(selectedOutline) : null;
+    replaceId && singleOutline ? centroidOf(singleOutline) : null;
+
+  hitTestRef.current = (rect) =>
+    tokensIntersectingRect(placed, displayTokens, view, rect);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const hoverTimer = useRef(0);
   const homeTarget = dragging && activeIndex === sourceIndex;
@@ -226,16 +287,34 @@ export function ProcessCanvas({
               }
               seatedTurn={item.token.type === "start" ? (seated?.turn ?? 0) : 0}
               selected={
-                item.token.id === selectedId ||
-                (item.token.type === "start" && seated?.id === selectedId)
+                (dragId != null && highlightIds.has(dragId)) ||
+                (item.token.type === "start" &&
+                  seated != null &&
+                  highlightIds.has(seated.id))
               }
               selectLabel={
                 item.token.type === "start" ? seated?.label : undefined
               }
-              onSelect={dragId ? () => onSelect(dragId) : undefined}
-              onPress={dragId ? (event) => beginGesture(dragId, event) : undefined}
-              onHover={dragId ? () => showHover(dragId) : undefined}
-              onHoverEnd={dragId ? () => hideHover(dragId) : undefined}
+              onSelect={
+                selectionEnabled && dragId
+                  ? () => onSelect(dragId)
+                  : undefined
+              }
+              onPress={
+                selectionEnabled && dragId
+                  ? (event) => beginGesture(dragId, event)
+                  : undefined
+              }
+              onHover={
+                selectionEnabled && dragId
+                  ? () => showHover(dragId)
+                  : undefined
+              }
+              onHoverEnd={
+                selectionEnabled && dragId
+                  ? () => hideHover(dragId)
+                  : undefined
+              }
             />
           </div>
         );
@@ -271,7 +350,7 @@ export function ProcessCanvas({
             );
           })
         : null}
-      {!dragging && hoveredId ? (
+      {!dragging && selectionEnabled && hoveredId ? (
         <TokenGrip
           id={hoveredId}
           label={tokenById.get(hoveredId)?.label ?? "token"}
@@ -282,16 +361,49 @@ export function ProcessCanvas({
           onHoverEnd={() => hideHover(hoveredId)}
         />
       ) : null}
-      {selectedOutline ? (
+      {!dragging && selectionEnabled && (multiSelected || marqueeRect)
+        ? [...highlightIds].map((id) => {
+            const outline = selectableOutline(placed, displayTokens, id);
+            if (!outline) return null;
+            return (
+              <SelectedTokenOutline
+                key={`sel-${id}`}
+                points={outline}
+                viewScale={view.scale}
+              />
+            );
+          })
+        : null}
+      {singleOutline ? (
         <TokenChrome
-          points={selectedOutline}
+          points={singleOutline}
           viewScale={view.scale}
           onRemove={onRemove}
+          onRotate={
+            tokens.find((token) => token.id === selectedId)?.type === "checkpoint"
+              ? undefined
+              : onRotate
+          }
           onSwitch={
             tokens.find((token) => token.id === selectedId)?.type === "checkpoint"
               ? undefined
               : onSwitch
           }
+          onReflect={onReflectSelected}
+        />
+      ) : null}
+      {multiBounds ? (
+        <MultiTokenChrome
+          bounds={multiBounds}
+          viewScale={view.scale}
+          onCopy={onCopySelected}
+          onRemove={onRemove}
+          onExport={onExportSelected}
+          onReflect={onReflectSelected}
+          onPress={(event) => {
+            const primary = selectedInProcessOrder(tokens, selectedIds)[0]?.id;
+            if (primary) beginGesture(primary, event);
+          }}
         />
       ) : null}
       <InsertionMenu
@@ -417,27 +529,6 @@ function seatedToken(tokens: ProcessToken[]): ProcessToken | null {
     .sort((a, b) => a.order - b.order)[0];
   if (!first || !geometryFor(first).outline) return null;
   return first;
-}
-
-function selectionOutline(
-  placed: PlacedToken[],
-  tokens: ProcessToken[],
-  selectedId: string | null,
-): Point[] | null {
-  if (!selectedId) return null;
-  const selected = tokens.find((token) => token.id === selectedId);
-  if (
-    !selected ||
-    (selected.type !== "phase" &&
-      selected.type !== "activity" &&
-      selected.type !== "checkpoint")
-  ) {
-    return null;
-  }
-  const own = placed.find((item) => item.token.id === selectedId);
-  if (own) return tokenWorldOutline(own);
-  const start = placed.find((item) => item.token.type === "start");
-  return start ? tokenWorldOutline(start) : null;
 }
 
 function centroidOf(points: readonly Point[]): Point {

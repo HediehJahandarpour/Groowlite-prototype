@@ -179,7 +179,7 @@ export function InsertionMenu({
         target instanceof Element &&
         Boolean(
           target.closest(
-            ".activity-filter, .token-toolbar, .immersive-explorer",
+            ".activity-filter, .global-token-search, .token-toolbar, .immersive-explorer",
           ),
         );
       if (onFilter) return;
