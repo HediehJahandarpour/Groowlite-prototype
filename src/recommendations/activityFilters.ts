@@ -5,16 +5,23 @@ import { illustrationColourAmount } from "./colourAnalysis";
 import { PHASE_EXPLANATION } from "./recommendationConfig";
 
 /**
- * Display labels for the filter pills.
- * Internal ids stay the process ids. Discovery is `discover`.
+ * Display labels for the filter pills, in process order.
+ * Internal ids stay the process ids. Discover is `discover`.
  * Share is the pink phase.
  */
 export const PHASE_FILTERS: readonly { id: PhaseId; label: string; color: string }[] = [
-  { id: "discover", label: "Discovery", color: "#4ba570" },
   { id: "understand", label: "Understand", color: "#348bcd" },
-  { id: "share", label: "Share", color: "#bd3b60" },
+  { id: "discover", label: "Discover", color: "#4ba570" },
   { id: "design", label: "Design", color: "#f2c649" },
   { id: "make", label: "Make", color: "#ec754f" },
+  { id: "share", label: "Share", color: "#bd3b60" },
+];
+
+/** Pyramid rows for the centred explorer phase filters. */
+export const PHASE_FILTER_ROWS: readonly (readonly PhaseId[])[] = [
+  ["understand", "discover"],
+  ["design", "make"],
+  ["share"],
 ];
 
 /**

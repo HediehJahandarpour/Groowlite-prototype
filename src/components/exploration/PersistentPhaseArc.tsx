@@ -2,8 +2,10 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type MutableRefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import type { CatalogEntry } from "../../process/tokenCatalog";
 import {
   PHASE_ARC,
@@ -17,6 +19,12 @@ import {
   EXPLORER_MOTION,
   prefersReducedMotion,
 } from "../../exploration/explorerMotion";
+import {
+  flyTokenToProcess,
+  hideDepartingToken,
+  tokenFlightRect,
+} from "../../exploration/flyTokenToProcess";
+import { ExplorerTokenCard } from "./ExplorerTokenCard";
 
 type PersistentPhaseArcProps = {
   active: boolean;
@@ -32,6 +40,12 @@ type PersistentPhaseArcProps = {
   scrollSpan: number;
   subscribe: (listener: (progress: number) => void) => () => void;
   onPick: (entry: CatalogEntry) => void;
+  viewport: HTMLElement | null;
+};
+
+type HoveredPhase = {
+  id: string;
+  anchor: HTMLButtonElement;
 };
 
 /**
@@ -51,6 +65,7 @@ export function PersistentPhaseArc({
   scrollSpan,
   subscribe,
   onPick,
+  viewport,
 }: PersistentPhaseArcProps) {
   const openSeats = useMemo(
     () => placePhaseArc(radius, width, height, tokenSize),
@@ -63,8 +78,21 @@ export function PersistentPhaseArc({
   const size = tokenSize * PHASE_ARC.sizeFactor;
   const nodes = useRef(new Map<string, HTMLButtonElement>());
   const pickLock = useRef(false);
+  const [hover, setHover] = useState<HoveredPhase | null>(null);
+  const [departedIds, setDepartedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const scrollSpanRef = useRef(scrollSpan);
   scrollSpanRef.current = scrollSpan;
+
+  useLayoutEffect(() => {
+    if (!active) {
+      setHover(null);
+      return;
+    }
+    // Fresh open restores any phases picked in the previous visit.
+    setDepartedIds(new Set());
+  }, [active]);
 
   useLayoutEffect(() => {
     if (!active || openSeats.length === 0) return;
@@ -122,21 +150,47 @@ export function PersistentPhaseArc({
       }}
       aria-label="Phase tokens"
     >
-      {openSeats.map((seat) => (
-        <PhaseArcToken
-          key={seat.entry.id}
-          id={seat.entry.id}
-          label={seat.entry.label}
-          asset={seat.entry.asset}
-          entry={seat.entry}
-          x={seat.x}
-          y={seat.y}
-          size={size}
-          pickLock={pickLock}
-          nodes={nodes}
-          onPick={onPick}
+      {openSeats.map((seat) => {
+        const departed = departedIds.has(seat.entry.id);
+        return (
+          <PhaseArcToken
+            key={seat.entry.id}
+            id={seat.entry.id}
+            label={seat.entry.label}
+            asset={seat.entry.asset}
+            entry={seat.entry}
+            x={seat.x}
+            y={seat.y}
+            size={size}
+            departed={departed}
+            pickLock={pickLock}
+            nodes={nodes}
+            onPick={onPick}
+            onDepart={() =>
+              setDepartedIds((current) => {
+                const next = new Set(current);
+                next.add(seat.entry.id);
+                return next;
+              })
+            }
+            onShowInfo={(node) =>
+              setHover({ id: seat.entry.id, anchor: node })
+            }
+            onHideInfo={() =>
+              setHover((current) =>
+                current?.id === seat.entry.id ? null : current,
+              )
+            }
+          />
+        );
+      })}
+      {hover && viewport && !departedIds.has(hover.id) ? (
+        <ExplorerTokenCard
+          id={hover.id}
+          anchor={hover.anchor}
+          viewport={viewport}
         />
-      ))}
+      ) : null}
     </div>
   );
 }
@@ -149,9 +203,13 @@ function PhaseArcToken({
   x,
   y,
   size,
+  departed,
   pickLock,
   nodes,
   onPick,
+  onDepart,
+  onShowInfo,
+  onHideInfo,
 }: {
   id: string;
   label: string;
@@ -160,17 +218,27 @@ function PhaseArcToken({
   x: number;
   y: number;
   size: number;
+  departed: boolean;
   pickLock: MutableRefObject<boolean>;
   nodes: MutableRefObject<Map<string, HTMLButtonElement>>;
   onPick: (entry: CatalogEntry) => void;
+  onDepart: () => void;
+  onShowInfo: (node: HTMLButtonElement) => void;
+  onHideInfo: () => void;
 }) {
   return (
     <button
       type="button"
-      className="float-token float-token--phase-arc is-near"
-      data-ready="true"
-      tabIndex={0}
+      className={
+        departed
+          ? "float-token float-token--phase-arc is-near is-departing"
+          : "float-token float-token--phase-arc is-near"
+      }
+      data-ready={departed ? "false" : "true"}
+      data-departed={departed ? "true" : "false"}
+      tabIndex={departed ? -1 : 0}
       aria-label={label}
+      aria-hidden={departed || undefined}
       ref={(node) => {
         if (node) nodes.current.set(id, node);
         else nodes.current.delete(id);
@@ -181,16 +249,36 @@ function PhaseArcToken({
         ["--fade" as string]: "1",
         transform: `translate3d(calc(-50% + ${x}px), calc(-50% + ${y}px), 0)`,
       }}
+      onMouseEnter={(event) => {
+        if (departed) return;
+        onShowInfo(event.currentTarget);
+      }}
+      onMouseLeave={onHideInfo}
+      onFocus={(event) => {
+        if (departed) return;
+        onShowInfo(event.currentTarget);
+      }}
+      onBlur={onHideInfo}
       onClick={(event) => {
-        if (pickLock.current) return;
+        if (pickLock.current || departed) return;
         pickLock.current = true;
         const node = event.currentTarget;
-        node.classList.add("is-confirmed");
-        onPick(entry);
-        window.setTimeout(() => {
-          node.classList.remove("is-confirmed");
-          pickLock.current = false;
-        }, 160);
+        onHideInfo();
+        const from = tokenFlightRect(node);
+        hideDepartingToken(node);
+        onDepart();
+        flyTokenToProcess({
+          asset,
+          from,
+          onCommit: () => {
+            flushSync(() => {
+              onPick(entry);
+            });
+          },
+          onDone: () => {
+            pickLock.current = false;
+          },
+        });
       }}
     >
       <svg
@@ -200,9 +288,6 @@ function PhaseArcToken({
       >
         <polygon points="50,1 98,35 80,93 20,93 2,35" fill="none" />
       </svg>
-      <span className="float-token__check" aria-hidden="true">
-        ✓
-      </span>
       <span className="float-token__art">
         <span className="float-token__tilt">
           <span className="float-token__float">

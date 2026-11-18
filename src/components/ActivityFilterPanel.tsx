@@ -232,7 +232,7 @@ function LegacyActivityFilterPanel({
           </div>
           <div className="activity-filter__phases">
             <h2 className="activity-filter__heading" id="activity-filter-heading">
-              Filter by Phases
+              Activities by process phase
             </h2>
             <div
               className="activity-filter__pills"

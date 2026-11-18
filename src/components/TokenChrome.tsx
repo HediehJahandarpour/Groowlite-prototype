@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { ArrowLeftRight, RotateCw, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Download, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { polygonPoints } from "../process/tokenGeometry";
 import type { Point } from "../process/processTypes";
@@ -17,23 +17,18 @@ type TokenChromeProps = {
   /** Recedes with the process while a radar plate is in front. */
   behind?: boolean;
   onRemove: () => void;
-  onRotate?: () => void;
+  onExport?: () => void;
   onSwitch?: () => void;
-  onReflect?: () => void;
 };
 
 const ACTIONS: {
   id: string;
   label: string;
   icon: LucideIcon;
-  run: keyof Pick<
-    TokenChromeProps,
-    "onRemove" | "onRotate" | "onSwitch" | "onReflect"
-  >;
+  run: keyof Pick<TokenChromeProps, "onRemove" | "onExport" | "onSwitch">;
 }[] = [
-  { id: "reflect", label: "Reflect", icon: Sparkles, run: "onReflect" },
-  { id: "remove", label: "Remove", icon: Trash2, run: "onRemove" },
-  { id: "rotate", label: "Rotate", icon: RotateCw, run: "onRotate" },
+  { id: "remove", label: "Delete", icon: Trash2, run: "onRemove" },
+  { id: "export", label: "Export", icon: Download, run: "onExport" },
   { id: "switch", label: "Switch", icon: ArrowLeftRight, run: "onSwitch" },
 ];
 
@@ -95,15 +90,14 @@ export function TokenChrome({
   viewScale,
   behind = false,
   onRemove,
-  onRotate,
+  onExport,
   onSwitch,
-  onReflect,
 }: TokenChromeProps) {
   if (points.length < 3) return null;
   const scale = viewScale > 0 ? viewScale : 1;
   const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
   const top = Math.min(...points.map((point) => point.y));
-  const handlers = { onRemove, onRotate, onSwitch, onReflect };
+  const handlers = { onRemove, onExport, onSwitch };
   const actions = ACTIONS.filter((action) => handlers[action.run]);
 
   return (

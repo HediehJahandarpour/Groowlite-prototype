@@ -54,11 +54,11 @@ function processAt(middles: ProcessToken[]) {
 test("filter pills use the existing phase ids and the Figma labels", () => {
   assert.deepEqual(
     PHASE_FILTERS.map((phase) => phase.id),
-    ["discover", "understand", "share", "design", "make"],
+    ["understand", "discover", "design", "make", "share"],
   );
   assert.deepEqual(
     PHASE_FILTERS.map((phase) => phase.label),
-    ["Discovery", "Understand", "Share", "Design", "Make"],
+    ["Understand", "Discover", "Design", "Make", "Share"],
   );
   for (const phase of PHASE_FILTERS) assert.ok(PHASES.includes(phase.id));
 });

@@ -8,11 +8,12 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import gsap from "gsap";
-import { Redo2, Undo2 } from "lucide-react";
+import { Info, Redo2, Undo2 } from "lucide-react";
 import { ACTIVITY_REGISTRY } from "../../data/activityRegistry";
 import type { PhaseId } from "../../data/phasePalette";
 import {
   applyActivityFilters,
+  PHASE_FILTER_ROWS,
   PHASE_FILTERS,
 } from "../../recommendations/activityFilters";
 import { searchTokenLibrary } from "../../recommendations/tokenSearch";
@@ -719,6 +720,7 @@ export function ImmersiveTokenExplorer({
         scrollSpan={scrollMax}
         subscribe={subscribe}
         onPick={choose}
+        viewport={host}
       />
       <div className="explorer-ui">
         {unified ? (
@@ -743,18 +745,61 @@ export function ImmersiveTokenExplorer({
             <div
               className="explorer-phase-filters"
               role="group"
-              aria-label="Filter activities by phase"
+              aria-labelledby="explorer-phase-heading"
             >
-              {PHASE_FILTERS.map((phase) => (
-                <PhaseFilterPill
-                  key={phase.id}
-                  id={phase.id}
-                  label={phase.label}
-                  color={phase.color}
-                  pressed={selectedPhaseFilters.includes(phase.id)}
-                  onToggle={togglePhase}
-                />
-              ))}
+              <div className="explorer-phase-filters__title">
+                <h2
+                  className="explorer-phase-filters__heading"
+                  id="explorer-phase-heading"
+                >
+                  Activities by process phase
+                </h2>
+                <span
+                  className="explorer-phase-filters__info"
+                  title="Filter the floating activities by Groow process phase. Clear the filter to see recommendations for your current context again."
+                >
+                  <Info size={14} strokeWidth={2} aria-hidden="true" />
+                  <span className="visually-hidden">
+                    Filter the floating activities by Groow process phase. Clear
+                    the filter to see recommendations for your current context
+                    again.
+                  </span>
+                </span>
+              </div>
+              <div className="explorer-phase-filters__rows">
+                {PHASE_FILTER_ROWS.map((row) => (
+                  <div
+                    key={row.join("-")}
+                    className="explorer-phase-filters__row"
+                  >
+                    {row.map((phaseId) => {
+                      const phase = PHASE_FILTERS.find(
+                        (item) => item.id === phaseId,
+                      );
+                      if (!phase) return null;
+                      return (
+                        <PhaseFilterPill
+                          key={phase.id}
+                          id={phase.id}
+                          label={phase.label}
+                          color={phase.color}
+                          pressed={selectedPhaseFilters.includes(phase.id)}
+                          onToggle={togglePhase}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+              {selectedPhaseFilters.length > 0 ? (
+                <button
+                  type="button"
+                  className="explorer-phase-filters__clear"
+                  onClick={() => setSelectedPhaseFilters([])}
+                >
+                  Clear filter
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}

@@ -57,16 +57,13 @@ type ProcessCanvasProps = {
   /** Lets the parent resolve box-select hits against current layout. */
   hitTestRef: RefObject<(rect: ScreenRect) => string[]>;
   replaceId: string | null;
-  /** Only the Select tool may pick or drag tokens. */
+  /** When false, exploration or reflection owns the canvas. */
   selectionEnabled?: boolean;
   onSelect: (id: string, options?: SelectOptions) => void;
   gapOpen: boolean;
   onRemove: () => void;
-  onRotate: () => void;
+  onExport: () => void;
   onSwitch: () => void;
-  onCopySelected: () => void;
-  onExportSelected: () => void;
-  onReflectSelected?: () => void;
   onReorder: (tokens: ProcessToken[]) => void;
   onPanBy: (dx: number, dy: number) => void;
   explorationActive?: boolean;
@@ -103,11 +100,8 @@ export function ProcessCanvas({
   onSelect,
   gapOpen,
   onRemove,
-  onRotate,
+  onExport,
   onSwitch,
-  onCopySelected,
-  onExportSelected,
-  onReflectSelected,
   onReorder,
   onPanBy,
   explorationActive = false,
@@ -215,37 +209,15 @@ export function ProcessCanvas({
     const layer = layerRef.current;
     if (!layer) return;
     const poses = explorationSplit?.poses ?? {};
-    const immediate =
-      !splitOpen || layer.classList.contains("process-layer--splitting");
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const tweens: gsap.core.Tween[] = [];
+    // Apply split poses immediately so each pick pushes the process clear of
+    // the selector before the handoff flight measures the seat.
     layer.querySelectorAll<HTMLElement>(".process-token-shift").forEach((node) => {
       const id = node.querySelector(".process-token")?.getAttribute("data-token-id");
       if (!id) return;
       const pose = poses[id] ?? IDENTITY_SHIFT;
-      if (immediate || reduced) {
-        gsap.killTweensOf(node);
-        writeShift(node, pose);
-        return;
-      }
-      const from = readShift(node);
-      if (sameShift(from, pose)) return;
-      const proxy = { ...from };
-      tweens.push(
-        gsap.to(proxy, {
-          x: pose.x,
-          y: pose.y,
-          scale: pose.scale,
-          opacity: pose.opacity,
-          duration: 0.72,
-          ease: "power2.inOut",
-          onUpdate: () => writeShift(node, proxy),
-        }),
-      );
+      gsap.killTweensOf(node);
+      writeShift(node, pose);
     });
-    return () => {
-      tweens.forEach((tween) => tween.kill());
-    };
   }, [explorationSplit, splitOpen]);
 
   function showHover(id: string) {
@@ -267,7 +239,13 @@ export function ProcessCanvas({
   return (
     <div
       ref={layerRef}
-      className={dragging ? "process-layer process-layer--dragging" : "process-layer"}
+      className={[
+        "process-layer",
+        dragging ? "process-layer--dragging" : "",
+        splitOpen ? "process-layer--split-open" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       style={{ ["--reflow-ms" as string]: `${DRAG.reflowMs}ms` }}
     >
       {placed.map((item) => {
@@ -379,27 +357,20 @@ export function ProcessCanvas({
           points={singleOutline}
           viewScale={view.scale}
           onRemove={onRemove}
-          onRotate={
-            tokens.find((token) => token.id === selectedId)?.type === "checkpoint"
-              ? undefined
-              : onRotate
-          }
+          onExport={onExport}
           onSwitch={
             tokens.find((token) => token.id === selectedId)?.type === "checkpoint"
               ? undefined
               : onSwitch
           }
-          onReflect={onReflectSelected}
         />
       ) : null}
       {multiBounds ? (
         <MultiTokenChrome
           bounds={multiBounds}
           viewScale={view.scale}
-          onCopy={onCopySelected}
           onRemove={onRemove}
-          onExport={onExportSelected}
-          onReflect={onReflectSelected}
+          onExport={onExport}
           onPress={(event) => {
             const primary = selectedInProcessOrder(tokens, selectedIds)[0]?.id;
             if (primary) beginGesture(primary, event);
@@ -538,30 +509,11 @@ function centroidOf(points: readonly Point[]): Point {
   };
 }
 
-function readShift(node: HTMLElement): SplitPose {
-  const style = getComputedStyle(node);
-  return {
-    x: Number.parseFloat(style.getPropertyValue("--shift-x")) || 0,
-    y: Number.parseFloat(style.getPropertyValue("--shift-y")) || 0,
-    scale: Number.parseFloat(style.getPropertyValue("--shift-scale")) || 1,
-    opacity: Number.parseFloat(style.getPropertyValue("--shift-opacity")) || 1,
-  };
-}
-
 function writeShift(node: HTMLElement, pose: SplitPose) {
   node.style.setProperty("--shift-x", String(pose.x));
   node.style.setProperty("--shift-y", String(pose.y));
   node.style.setProperty("--shift-scale", String(pose.scale));
   node.style.setProperty("--shift-opacity", String(pose.opacity));
-}
-
-function sameShift(left: SplitPose, right: SplitPose) {
-  return (
-    Math.abs(left.x - right.x) < 0.5 &&
-    Math.abs(left.y - right.y) < 0.5 &&
-    Math.abs(left.scale - right.scale) < 0.001 &&
-    Math.abs(left.opacity - right.opacity) < 0.001
-  );
 }
 
 function phaseArt(token: ProcessToken) {

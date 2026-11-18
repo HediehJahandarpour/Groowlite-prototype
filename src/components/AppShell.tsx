@@ -2,19 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useCanvasView } from "../canvas/useCanvasView";
 import { useExplorationCamera } from "../exploration/useExplorationCamera";
 import {
-  duplicateSelectedTokens,
-  duplicateToken,
   removeSelectedTokens,
   removeToken,
   replaceToken,
-  rotateToken,
 } from "../process/editToken";
 import {
   downloadBlob,
   exportSelectedTokensPng,
 } from "../process/exportSelected";
 import { insertToken } from "../process/insertToken";
-import { canReflectOnSelection } from "../reflection/reflectionContext";
 import { useReflectionSession } from "../reflection/useReflectionSession";
 import type { ScreenRect } from "../process/multiSelect";
 import { initialProcess } from "../process/processTestData";
@@ -22,7 +18,7 @@ import type { ProcessToken } from "../process/processTypes";
 import type { CatalogEntry, MenuCategory } from "../process/tokenCatalog";
 import { Canvas } from "./Canvas";
 import { Header, INITIAL_PROJECT, type ProjectDetails } from "./Header";
-import { LeftToolbar, type CanvasTool } from "./LeftToolbar";
+import { LeftToolbar } from "./LeftToolbar";
 import { ProcessCanvas } from "./ProcessCanvas";
 import { AIReflectionPanel } from "./reflection/AIReflectionPanel";
 import { UndoRedo } from "./UndoRedo";
@@ -37,8 +33,6 @@ type ProcessSnapshot = {
 };
 
 export function AppShell() {
-  /** Starts in Add so empty-canvas drag pans. Select must be chosen to pick tokens. */
-  const [tool, setTool] = useState<CanvasTool>("add");
   const [tokens, setTokens] = useState<ProcessToken[]>(initialProcess);
   const [project, setProject] = useState<ProjectDetails>(INITIAL_PROJECT);
   const [activeInsertion, setActiveInsertion] = useState(0);
@@ -67,8 +61,8 @@ export function AppShell() {
     flyTo,
   });
   const canvasLocked = exploring || atmosphere > 0;
-  const selectionEnabled =
-    tool === "select" && !canvasLocked && !reflection.isOpen;
+  /** Click a token or drag a marquee anytime the canvas is free. Scroll to pan. */
+  const selectionEnabled = !canvasLocked && !reflection.isOpen;
   const [sessionAdds, setSessionAdds] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -156,16 +150,6 @@ export function AppShell() {
       scope: "whole-process",
       tokens: tokensRef.current,
       selectedIds: [],
-      project: projectInfo(),
-    });
-  }
-
-  function startSelectedReflection() {
-    if (!canReflectOnSelection(tokensRef.current, selectedIds)) return;
-    reflection.start({
-      scope: "selected-section",
-      tokens: tokensRef.current,
-      selectedIds,
       project: projectInfo(),
     });
   }
@@ -343,49 +327,24 @@ export function AppShell() {
     });
   }, [tokens]);
 
-  function rotateSelected() {
-    if (!selectedId) return;
-    const current = tokensRef.current;
-    const next = rotateToken(current, selectedId);
-    if (next === current) return;
-    remember();
-    sessionHead.current = false;
-    tokensRef.current = next;
-    setTokens(next);
-  }
-
-  function duplicateSelected() {
-    if (selectedIds.length === 0) return;
-    const current = tokensRef.current;
-    if (selectedIds.length === 1) {
-      const result = duplicateToken(current, selectedIds[0]);
-      if (!result.createdId || result.tokens === current) return;
-      remember();
-      sessionHead.current = false;
-      tokensRef.current = result.tokens;
-      setTokens(result.tokens);
-      setSelectedIds([result.createdId]);
-      closeMenu();
-      return;
-    }
-    const result = duplicateSelectedTokens(current, selectedIds);
-    if (result.createdIds.length === 0 || result.tokens === current) return;
-    remember();
-    sessionHead.current = false;
-    tokensRef.current = result.tokens;
-    setTokens(result.tokens);
-    setSelectedIds(result.createdIds);
-    closeMenu();
-  }
+  const exportLock = useRef(false);
 
   async function exportSelection() {
-    if (selectedIds.length < 2) return;
+    if (exportLock.current || selectedIdsRef.current.length === 0) return;
+    exportLock.current = true;
     try {
-      const blob = await exportSelectedTokensPng(tokensRef.current, selectedIds);
+      const blob = await exportSelectedTokensPng(
+        tokensRef.current,
+        selectedIdsRef.current,
+      );
       if (!blob) return;
-      downloadBlob(blob, "groow-selected-tokens.png");
-    } catch {
-      // Image load failures leave the process unchanged.
+      const count = selectedIdsRef.current.length;
+      downloadBlob(
+        blob,
+        count === 1 ? "token.png" : `tokens-${count}.png`,
+      );
+    } finally {
+      exportLock.current = false;
     }
   }
 
@@ -485,16 +444,10 @@ export function AppShell() {
             onSelect={selectToken}
             gapOpen={gapOpen && !replaceId}
             onRemove={removeSelection}
-            onRotate={rotateSelected}
+            onExport={() => {
+              void exportSelection();
+            }}
             onSwitch={switchSelected}
-            onCopySelected={duplicateSelected}
-            onExportSelected={exportSelection}
-            onReflectSelected={
-              !reflection.isOpen &&
-              canReflectOnSelection(tokens, selectedIds)
-                ? startSelectedReflection
-                : undefined
-            }
             onReorder={commitReorder}
             onPanBy={panBy}
             explorationActive={canvasLocked}
@@ -504,14 +457,7 @@ export function AppShell() {
             atmosphereHost={atmosphereHost}
           />
         </Canvas>
-        <LeftToolbar
-          tool={tool}
-          onToolChange={(next) => {
-            if (next !== "select") clearSelection();
-            setTool(next);
-          }}
-          onReflect={startWholeProcessReflection}
-        />
+        <LeftToolbar onReflect={startWholeProcessReflection} />
         <UndoRedo
           canUndo={canUndo}
           canRedo={canRedo}

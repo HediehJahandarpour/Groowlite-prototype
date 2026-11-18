@@ -1,14 +1,20 @@
 import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import gsap from "gsap";
 import type { ScreenRect } from "../../exploration/cameraFocus";
 import { IMMERSIVE_DEPTH, projectCandidate } from "../../exploration/depthPose";
-import { EXPLORATION, PROCESS_ACTIVITY_SIZE } from "../../exploration/explorationConfig";
+import { PROCESS_ACTIVITY_SIZE } from "../../exploration/explorationConfig";
 import {
   EXPLORER_MOTION,
   applyOpeningTeaser,
   depthTransform,
   prefersReducedMotion,
 } from "../../exploration/explorerMotion";
+import {
+  flyTokenToProcess,
+  hideDepartingToken,
+  tokenFlightRect,
+} from "../../exploration/flyTokenToProcess";
 import { createIdleFloat, type IdleFloatController } from "../../exploration/idleFloat";
 import type { SpatialCandidate } from "../../exploration/spatialLayout";
 import type { CatalogEntry } from "../../process/tokenCatalog";
@@ -94,7 +100,15 @@ export const FloatingTokenScene = forwardRef<
   const hoverId = useRef<string | null>(null);
   const hoverScale = useRef(1);
   const pickLock = useRef(false);
+  const [departedIds, setDepartedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [hover, setHover] = useState<HoveredToken | null>(null);
+
+  // Picked tokens stay out for this visit; a fresh open restores them.
+  useLayoutEffect(() => {
+    if (active) setDepartedIds(new Set());
+  }, [active]);
   const idleRef = useRef<IdleFloatController | null>(null);
   const paintRef = useRef<(progress: number) => void>(() => {});
   const progressRef = useRef(0);
@@ -272,7 +286,8 @@ export const FloatingTokenScene = forwardRef<
         // Keep every floating token at full strength. Process-zone fade used
         // to wash out the left side of the ring (Share, Involve Experts, …).
         const opacity = posed?.opacity ?? motion.opacity;
-        const interactive = motion.interactive;
+        const departed = node.dataset.departed === "true";
+        const interactive = !departed && motion.interactive;
         node.style.transform = posed
           ? depthTransform({
               x: motion.x,
@@ -284,12 +299,14 @@ export const FloatingTokenScene = forwardRef<
             })
           : motion.transform;
         node.style.zIndex = String(motion.zIndex);
-        node.style.setProperty("--fade", opacity.toFixed(3));
-        node.style.visibility = opacity < 0.01 ? "hidden" : "visible";
+        node.style.setProperty("--fade", departed ? "0" : opacity.toFixed(3));
+        node.style.visibility =
+          departed || opacity < 0.01 ? "hidden" : "visible";
         node.dataset.ready = interactive ? "true" : "false";
         node.tabIndex = interactive ? 0 : -1;
         node.setAttribute("aria-hidden", interactive ? "false" : "true");
         node.classList.toggle("is-near", interactive);
+        node.classList.toggle("is-departing", departed);
         const was = seen.get(item.id) ?? false;
         const visible = was
           ? opacity > EXPLORER_MOTION.idle.hideBelow
@@ -380,7 +397,9 @@ export const FloatingTokenScene = forwardRef<
       className="explorer-scene"
       style={{ perspective: `${IMMERSIVE_DEPTH.perspective}px` }}
     >
-      {candidates.map((item) => (
+      {candidates
+        .filter((item) => !departedIds.has(item.id))
+        .map((item) => (
         <button
           key={item.id}
           type="button"
@@ -408,8 +427,15 @@ export const FloatingTokenScene = forwardRef<
             if (node.dataset.ready !== "true" || pickLock.current) return;
             pickLock.current = true;
             settle();
-            node.classList.add("is-confirmed");
-            flyTowardProcess(item.asset, node.getBoundingClientRect());
+            // Measure, then hide the explorer copy before the flyer starts.
+            const from = tokenFlightRect(node);
+            hideCard(node);
+            hideDepartingToken(node);
+            setDepartedIds((current) => {
+              const next = new Set(current);
+              next.add(item.id);
+              return next;
+            });
             const type =
               item.type === "phase" ||
               item.type === "activity" ||
@@ -422,25 +448,30 @@ export const FloatingTokenScene = forwardRef<
               item.category === "checkpoint"
                 ? item.category
                 : "activity";
-            onPick({
+            const entry: CatalogEntry = {
               id: item.id,
               asset: item.asset,
               label: item.label,
               type,
               category,
+            };
+            flyTokenToProcess({
+              asset: item.asset,
+              from,
+              onCommit: () => {
+                flushSync(() => {
+                  onPick(entry);
+                });
+              },
+              onDone: () => {
+                pickLock.current = false;
+              },
             });
-            window.setTimeout(() => {
-              node.classList.remove("is-confirmed");
-              pickLock.current = false;
-            }, 160);
           }}
         >
           <svg className="float-token__stroke" viewBox="0 0 100 100" aria-hidden="true">
             <polygon points="50,1 98,35 80,93 20,93 2,35" fill="none" />
           </svg>
-          <span className="float-token__check" aria-hidden="true">
-            ✓
-          </span>
           <span className="float-token__art">
             <span className="float-token__tilt">
               <span className="float-token__float">
@@ -450,7 +481,7 @@ export const FloatingTokenScene = forwardRef<
           </span>
         </button>
       ))}
-      {hover && viewport ? (
+      {hover && viewport && !departedIds.has(hover.id) ? (
         <ExplorerTokenCard
           id={hover.id}
           anchor={hover.anchor}
@@ -460,32 +491,3 @@ export const FloatingTokenScene = forwardRef<
     </div>
   );
 });
-
-function flyTowardProcess(asset: string, from: DOMRect) {
-  const canvas = document.querySelector(".canvas");
-  if (!(canvas instanceof HTMLElement)) return;
-  const to = canvas.getBoundingClientRect();
-  const node = document.createElement("img");
-  node.src = `/tokens/${asset}`;
-  node.alt = "";
-  node.className = "explorer-flyer";
-  document.body.appendChild(node);
-  gsap.fromTo(
-    node,
-    {
-      left: from.left,
-      top: from.top,
-      width: Math.min(from.width, 96),
-      opacity: 1,
-    },
-    {
-      left: to.left + to.width * EXPLORATION.splitLeftX - 21,
-      top: to.top + to.height * EXPLORATION.processFocusY - 21,
-      width: 42,
-      opacity: 0,
-      duration: 0.34,
-      ease: "power2.in",
-      onComplete: () => node.remove(),
-    },
-  );
-}

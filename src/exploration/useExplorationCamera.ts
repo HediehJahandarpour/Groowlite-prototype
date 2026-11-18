@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import gsap from "gsap";
 import type { CanvasView } from "../canvas/view";
@@ -28,6 +28,9 @@ function reducedMotion() {
  * category is open, then returns to the view from before exploration.
  * The glass fades on its own timeline so a later focus nudge does not
  * restart it. Candidate scrolling does not call this.
+ *
+ * Split poses update in useLayoutEffect so a flushSync pick can measure
+ * the real process seat after the chain has pushed clear of the selector.
  */
 export function useExplorationCamera({
   active,
@@ -92,7 +95,7 @@ export function useExplorationCamera({
     return () => observer.disconnect();
   }, [viewportRef]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (size.width < 2 || size.height < 2) return;
     const viewport = { width: size.width, height: size.height };
 
@@ -122,15 +125,20 @@ export function useExplorationCamera({
       const resuming = phase.current === "closing";
       phase.current = "open";
       if (!home.current) home.current = getView();
+      // Always publish poses so each pick can push the chain clear of the
+      // selector, even when the camera key is unchanged.
+      setSplit(model);
       if (applied.current === key && !resuming) return;
       const opening = applied.current === "" || resuming;
       applied.current = key;
-      setSplit(model);
-      if (opening) fadeAtmosphere(1, EXPLORATION.transitionDuration);
-      flyTo(
-        next,
-        opening ? EXPLORATION.transitionDuration : EXPLORATION.adjustDuration,
-      );
+      if (opening) {
+        fadeAtmosphere(1, EXPLORATION.transitionDuration);
+        flyTo(next, EXPLORATION.transitionDuration);
+      } else {
+        // Snap (no tween) so split math matches the live camera before the
+        // handoff flight measures the seat — avoids left-then-right paths.
+        flyTo(next, 0);
+      }
       return;
     }
 

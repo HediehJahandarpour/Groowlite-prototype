@@ -19,11 +19,11 @@ type CanvasProps = {
     localY: number,
     immediate?: boolean,
   ) => void;
-  /** A click on empty canvas, after a press that did not pan. */
+  /** A click on empty canvas, after a press that did not box-select. */
   onBackgroundClick?: () => void;
   /**
-   * When true (Select tool), empty-canvas drag draws a selection rectangle.
-   * When false, empty-canvas drag pans. Space + drag also pans in either mode.
+   * When true, empty-canvas drag draws a selection rectangle.
+   * Trackpad scroll pans the canvas. Space + drag also pans.
    */
   boxSelectEnabled?: boolean;
   /** Live preview of tokens under the drag rectangle. */
@@ -140,21 +140,27 @@ export function Canvas({
 
     function onWheel(event: WheelEvent) {
       if (lockedRef.current) return;
-      if (!(event.ctrlKey || event.metaKey)) return;
       event.preventDefault();
 
-      const point = localPoint(viewport!, event.clientX, event.clientY);
-      const pixelDelta =
-        event.deltaMode === 1
-          ? event.deltaY * 16
-          : event.deltaMode === 2
-            ? event.deltaY * viewport!.clientHeight
-            : event.deltaY;
-      const factor = Math.exp(-pixelDelta * 0.0015);
-      // Pixel deltas are a trackpad pinch, including a fast one that arrives
-      // as one large event. Apply those directly. Line and page notches ease.
-      const tracksFinger = event.deltaMode === 0;
-      onZoomBy(factor, point.x, point.y, tracksFinger);
+      const toPixels = (value: number, axisSize: number) => {
+        if (event.deltaMode === 1) return value * 16;
+        if (event.deltaMode === 2) return value * axisSize;
+        return value;
+      };
+
+      // Pinch / ctrl+wheel zooms. Plain trackpad scroll pans left/right/up/down.
+      if (event.ctrlKey || event.metaKey) {
+        const point = localPoint(viewport!, event.clientX, event.clientY);
+        const pixelDelta = toPixels(event.deltaY, viewport!.clientHeight);
+        const factor = Math.exp(-pixelDelta * 0.0015);
+        const tracksFinger = event.deltaMode === 0;
+        onZoomBy(factor, point.x, point.y, tracksFinger);
+        return;
+      }
+
+      const dx = toPixels(event.deltaX, viewport!.clientWidth);
+      const dy = toPixels(event.deltaY, viewport!.clientHeight);
+      if (dx !== 0 || dy !== 0) onPanBy(-dx, -dy);
     }
 
     function preventPagePinch(event: Event) {
@@ -174,7 +180,7 @@ export function Canvas({
       viewport.removeEventListener("gesturechange", preventPagePinch);
       viewport.removeEventListener("gestureend", preventPagePinch);
     };
-  }, [onZoomBy, viewportRef]);
+  }, [onPanBy, onZoomBy, viewportRef]);
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (locked || event.button !== 0) return;
