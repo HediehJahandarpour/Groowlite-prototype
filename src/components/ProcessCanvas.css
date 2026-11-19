@@ -84,8 +84,10 @@
 .slot-stamp,
 .slot-stamp-hit {
   position: absolute;
-  /* Sit on the top edge: most of the piece rises above the slot. */
-  transform: translate(-50%, -90%);
+  /* Base sits on the upper straight side, standing out from that line. */
+  transform-origin: 50% var(--stamp-foot, 100%);
+  transform: translate(-50%, calc(var(--stamp-foot, 100%) * -1))
+    rotate(var(--stamp-tilt, 0deg));
 }
 
 .slot-stamp {

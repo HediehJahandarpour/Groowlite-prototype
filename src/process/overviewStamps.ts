@@ -12,6 +12,11 @@ export type OverviewStamp = {
   y: number;
   displayWidth: number;
   displayHeight: number;
+  /**
+   * Where the artwork meets the ground, as a percentage of the image height.
+   * The rest below that line is transparent padding.
+   */
+  foot: number;
 };
 
 /** Wooden pieces shown while the process overview is on screen. */
@@ -26,6 +31,7 @@ export const OVERVIEW_STAMPS: readonly OverviewStamp[] = [
     y: 2,
     displayWidth: 76.875,
     displayHeight: 113.625,
+    foot: (286 / 303) * 100,
   },
   {
     id: "checkpoint",
@@ -37,6 +43,7 @@ export const OVERVIEW_STAMPS: readonly OverviewStamp[] = [
     y: 0,
     displayWidth: 97.125,
     displayHeight: 117.375,
+    foot: (278 / 313) * 100,
   },
   {
     id: "activity",
@@ -48,6 +55,7 @@ export const OVERVIEW_STAMPS: readonly OverviewStamp[] = [
     y: 0,
     displayWidth: 117.375,
     displayHeight: 117.375,
+    foot: (277 / 313) * 100,
   },
   {
     id: "repeat",
@@ -59,6 +67,7 @@ export const OVERVIEW_STAMPS: readonly OverviewStamp[] = [
     y: 15,
     displayWidth: 104.25,
     displayHeight: 87.75,
+    foot: (217 / 234) * 100,
   },
   {
     id: "content",
@@ -70,6 +79,7 @@ export const OVERVIEW_STAMPS: readonly OverviewStamp[] = [
     y: 24,
     displayWidth: 75,
     displayHeight: 70.5,
+    foot: (174 / 188) * 100,
   },
 ];
 

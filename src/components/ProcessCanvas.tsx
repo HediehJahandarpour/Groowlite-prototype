@@ -17,6 +17,7 @@ import {
   type ScreenRect,
 } from "../process/multiSelect";
 import { stampById } from "../process/overviewStamps";
+import { upperEdgeSeat } from "../process/stampSeat";
 import { layoutProcess, tokenWorldOutline } from "../process/processLayout";
 import { geometryFor, polygonPoints } from "../process/tokenGeometry";
 import type { CatalogEntry, MenuCategory } from "../process/tokenCatalog";
@@ -563,17 +564,23 @@ function SlotStamp({
 }) {
   const pieceId = slotStamps[ownerId];
   if ((!pieceId && !hot) || outline.length < 3) return null;
-  const seat = topOfSlot(outline);
+  const seat = upperEdgeSeat(outline);
   const piece = pieceId ? stampById(pieceId) : null;
   const span = slotSpan(outline);
   const width = piece ? span * STAMP_SCALE : 0;
   const height = piece ? width * (piece.height / piece.width) : 0;
+  const seatStyle = {
+    left: seat.x,
+    top: seat.y,
+    ["--stamp-tilt" as string]: `${seat.tilt}deg`,
+    ["--stamp-foot" as string]: `${piece?.foot ?? 100}%`,
+  };
   return (
     <>
       {hot ? (
         <div
           className="slot-stamp-hit slot-stamp-hit--hot"
-          style={{ left: seat.x, top: seat.y, width: span * STAMP_SCALE, height: span * STAMP_SCALE }}
+          style={{ ...seatStyle, width: span * STAMP_SCALE, height: span * STAMP_SCALE }}
         />
       ) : null}
       {piece ? (
@@ -584,22 +591,11 @@ function SlotStamp({
           width={Math.round(width)}
           height={Math.round(height)}
           draggable={false}
-          style={{ left: seat.x, top: seat.y, width, height }}
+          style={{ ...seatStyle, width, height }}
         />
       ) : null}
     </>
   );
-}
-
-/** Highest point of the slot, where a piece rests on top of the token. */
-function topOfSlot(points: readonly Point[]): Point {
-  const top = Math.min(...points.map((point) => point.y));
-  const edge = points.filter((point) => point.y <= top + 8);
-  const used = edge.length > 0 ? edge : points;
-  return {
-    x: used.reduce((sum, point) => sum + point.x, 0) / used.length,
-    y: top,
-  };
 }
 
 function slotSpan(points: readonly Point[]): number {
