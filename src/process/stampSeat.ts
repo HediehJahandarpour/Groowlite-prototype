@@ -38,10 +38,13 @@ export function upperEdgeSeat(points: readonly Point[]): StampSeat {
       ny = -ny;
     }
     const up = -ny;
-    const moreUpward = best !== null && up > best.up + 1e-4;
-    const equallyUp = best !== null && Math.abs(up - best.up) <= 1e-4;
-    const higher = equallyUp && mid.y < best.y - 0.5;
-    if (!best || moreUpward || higher) {
+    const chosen = best;
+    const moreUpward = chosen !== null && up > chosen.up + 1e-4;
+    const higher =
+      chosen !== null &&
+      Math.abs(up - chosen.up) <= 1e-4 &&
+      mid.y < chosen.y - 0.5;
+    if (!chosen || moreUpward || higher) {
       best = { x: mid.x, y: mid.y, nx, ny, up };
     }
   }
