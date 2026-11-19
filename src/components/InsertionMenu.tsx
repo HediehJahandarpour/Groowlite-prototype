@@ -185,7 +185,7 @@ export function InsertionMenu({
       if (onFilter) return;
       const onChrome =
         target instanceof Element &&
-        Boolean(target.closest(".header, .toolbar"));
+        Boolean(target.closest(".header, .toolbar, .add-process"));
       if (onChrome) return;
       const onCanvas =
         target instanceof Element && Boolean(target.closest(".canvas"));

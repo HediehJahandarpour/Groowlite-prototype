@@ -19,9 +19,11 @@ export const INITIAL_PROJECT: ProjectDetails = {
 type HeaderProps = {
   details: ProjectDetails;
   onChange: (details: ProjectDetails) => void;
+  onExport: () => void;
+  exporting?: boolean;
 };
 
-export function Header({ details, onChange }: HeaderProps) {
+export function Header({ details, onChange, onExport, exporting = false }: HeaderProps) {
   const panelId = useId();
   const rootRef = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
@@ -73,9 +75,15 @@ export function Header({ details, onChange }: HeaderProps) {
             </span>
           </button>
         </div>
-        <button type="button" className="header__export" disabled>
+        <button
+          type="button"
+          className="header__export"
+          onClick={onExport}
+          disabled={exporting}
+          aria-busy={exporting || undefined}
+        >
           <Download size={15} strokeWidth={2} />
-          Export
+          {exporting ? "Exporting" : "Export"}
         </button>
       </div>
 

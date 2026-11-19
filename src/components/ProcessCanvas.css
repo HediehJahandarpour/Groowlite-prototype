@@ -81,6 +81,30 @@
   filter: drop-shadow(0 0 14px rgba(8, 46, 239, 0.55));
 }
 
+.slot-stamp,
+.slot-stamp-hit {
+  position: absolute;
+  /* Sit on the top edge: most of the piece rises above the slot. */
+  transform: translate(-50%, -90%);
+}
+
+.slot-stamp {
+  z-index: 5;
+  pointer-events: none;
+  filter: drop-shadow(0 14px 10px rgba(28, 28, 28, 0.22));
+}
+
+.slot-stamp-hit {
+  z-index: 4;
+  border-radius: 50%;
+  background: transparent;
+  pointer-events: none;
+}
+
+.slot-stamp-hit--hot {
+  background: rgba(8, 46, 239, 0.16);
+}
+
 .process-token--behind .process-token__hit polygon {
   pointer-events: none;
 }

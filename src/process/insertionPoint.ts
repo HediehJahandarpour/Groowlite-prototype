@@ -47,6 +47,7 @@ export function plusPoint(
   start: PlacedToken,
   slots: ProcessSlot[],
   phaseInStart: boolean,
+  reach = 28,
 ): Point {
   const point = seamPoint(index, start, slots, phaseInStart);
   const slotIndex = chainSlot(index, phaseInStart);
@@ -56,7 +57,7 @@ export function plusPoint(
   const dy = slotIndex < 0 ? slot.y - slot.entry.y : slot.exit.y - slot.y;
   const length = Math.hypot(dx, dy) || 1;
   return {
-    x: point.x + (dx / length) * 28,
-    y: point.y + (dy / length) * 28,
+    x: point.x + (dx / length) * reach,
+    y: point.y + (dy / length) * reach,
   };
 }

@@ -1,36 +1,40 @@
-.toolbar {
+.toolbar-slot {
   position: absolute;
-  z-index: 50;
-  left: 20px;
-  top: 26px;
+  z-index: 60;
+  /* Sit in the gap before the project name (header padding-left: 108px). */
+  left: 50px;
+  top: 29px;
+}
+
+.toolbar {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px;
-  border-radius: 999px;
-  background: var(--groow-blue);
 }
 
 .toolbar__button {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 50px;
+  height: 50px;
+  padding: 0;
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: #ffffff;
   cursor: pointer;
   transition:
-    background-color 160ms ease,
-    color 160ms ease,
     box-shadow 160ms ease,
-    transform 160ms ease;
+    transform 160ms ease,
+    filter 160ms ease;
+}
+
+.toolbar__button img {
+  display: block;
 }
 
 .toolbar__button:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
+  filter: brightness(1.06);
 }
 
 .toolbar__button:active {
@@ -38,21 +42,18 @@
 }
 
 .toolbar__button[aria-pressed="true"] {
-  background: #ffffff;
-  color: var(--groow-blue);
-  box-shadow: 0 1px 4px rgba(16, 24, 40, 0.16);
-}
-
-.toolbar__button[aria-pressed="true"]:hover {
-  background: #ffffff;
-  color: var(--groow-blue);
+  box-shadow: 0 0 0 3px rgba(8, 39, 233, 0.28);
 }
 
 .toolbar__button:focus-visible {
-  outline: 2px solid #ffffff;
-  outline-offset: 2px;
+  outline: 2px solid #0827e9;
+  outline-offset: 3px;
 }
 
-.toolbar__button--action:hover {
-  background: rgba(255, 255, 255, 0.2);
+@media (max-width: 720px) {
+  .toolbar-slot {
+    /* Header name inset drops to 88px on small screens. */
+    left: 30px;
+    top: 24px;
+  }
 }

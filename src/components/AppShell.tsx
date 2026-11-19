@@ -8,19 +8,21 @@ import {
 } from "../process/editToken";
 import {
   downloadBlob,
+  exportProcessPng,
   exportSelectedTokensPng,
+  processExportFilename,
 } from "../process/exportSelected";
+import { applySlotStamp } from "../process/overviewStamps";
 import { insertToken } from "../process/insertToken";
-import { useReflectionSession } from "../reflection/useReflectionSession";
 import type { ScreenRect } from "../process/multiSelect";
 import { initialProcess } from "../process/processTestData";
-import type { ProcessToken } from "../process/processTypes";
+import type { OverviewStampId, ProcessToken, SlotStamps } from "../process/processTypes";
 import type { CatalogEntry, MenuCategory } from "../process/tokenCatalog";
 import { Canvas } from "./Canvas";
 import { Header, INITIAL_PROJECT, type ProjectDetails } from "./Header";
 import { LeftToolbar } from "./LeftToolbar";
+import { OverviewToolbar } from "./OverviewToolbar";
 import { ProcessCanvas } from "./ProcessCanvas";
-import { AIReflectionPanel } from "./reflection/AIReflectionPanel";
 import { UndoRedo } from "./UndoRedo";
 import type { SelectOptions } from "./useProcessDrag";
 import { ZoomControls } from "./ZoomControls";
@@ -30,6 +32,7 @@ type ProcessSnapshot = {
   tokens: ProcessToken[];
   insertion: number;
   session: boolean;
+  stamps: SlotStamps;
 };
 
 export function AppShell() {
@@ -46,9 +49,14 @@ export function AppShell() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [atmosphereHost, setAtmosphereHost] = useState<HTMLDivElement | null>(null);
   const hitTestRef = useRef<(rect: ScreenRect) => string[]>(() => []);
+  const tokenAtRef = useRef<(clientX: number, clientY: number) => string | null>(
+    () => null,
+  );
+  const [armedStamp, setArmedStamp] = useState<OverviewStampId | null>(null);
+  const [stampTargetId, setStampTargetId] = useState<string | null>(null);
+  const [slotStamps, setSlotStamps] = useState<SlotStamps>({});
   const { view, panBy, zoomBy, zoomByPercent, resetZoom, flyTo, getView } =
     useCanvasView();
-  const reflection = useReflectionSession();
   const exploring =
     category === "phase" || category === "activity" || category === "checkpoint";
   const { atmosphere, split } = useExplorationCamera({
@@ -62,11 +70,12 @@ export function AppShell() {
   });
   const canvasLocked = exploring || atmosphere > 0;
   /** Click a token or drag a marquee anytime the canvas is free. Scroll to pan. */
-  const selectionEnabled = !canvasLocked && !reflection.isOpen;
+  const selectionEnabled = !canvasLocked;
   const [sessionAdds, setSessionAdds] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const tokensRef = useRef(tokens);
+  const stampsRef = useRef(slotStamps);
   const insertionRef = useRef(activeInsertion);
   const pastRef = useRef<ProcessSnapshot[]>([]);
   const futureRef = useRef<ProcessSnapshot[]>([]);
@@ -74,6 +83,7 @@ export function AppShell() {
   const sessionHead = useRef(false);
   const historyRef = useRef({ undo: () => {}, redo: () => {} });
   tokensRef.current = tokens;
+  stampsRef.current = slotStamps;
   const selectedId = selectedIds.length === 1 ? selectedIds[0] : null;
 
   const closeMenu = useCallback(() => {
@@ -113,11 +123,6 @@ export function AppShell() {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
-      if (reflection.isOpen) {
-        event.preventDefault();
-        reflection.close();
-        return;
-      }
       if (isTypingTarget(event.target)) return;
       if (document.documentElement.classList.contains("is-reordering")) return;
       if (selectedIds.length === 0 && !marqueeRect) return;
@@ -131,37 +136,8 @@ export function AppShell() {
     clearSelection,
     closeMenu,
     marqueeRect,
-    reflection.close,
-    reflection.isOpen,
     selectedIds.length,
   ]);
-
-  function projectInfo() {
-    return {
-      title: project.name,
-      description: project.description,
-      designQuestion: project.designQuestion,
-      target: project.target,
-    };
-  }
-
-  function startWholeProcessReflection() {
-    reflection.start({
-      scope: "whole-process",
-      tokens: tokensRef.current,
-      selectedIds: [],
-      project: projectInfo(),
-    });
-  }
-
-  function backToProcessFromReflection() {
-    reflection.close();
-  }
-
-  function exploreActivitiesFromReflection() {
-    reflection.close();
-    exploreMode("activity");
-  }
 
   function activateInsertion(index: number) {
     insertionRef.current = index;
@@ -185,6 +161,7 @@ export function AppShell() {
         tokens: tokensRef.current,
         insertion: insertionRef.current,
         session: sessionHead.current,
+        stamps: stampsRef.current,
       },
     ];
     futureRef.current = [];
@@ -202,13 +179,16 @@ export function AppShell() {
         tokens: tokensRef.current,
         insertion: insertionRef.current,
         session: leavingSession,
+        stamps: stampsRef.current,
       },
       ...futureRef.current,
     ];
     sessionHead.current = previous.session;
     tokensRef.current = previous.tokens;
+    stampsRef.current = previous.stamps;
     insertionRef.current = previous.insertion;
     setTokens(previous.tokens);
+    setSlotStamps(previous.stamps);
     setActiveInsertion(previous.insertion);
     setCanUndo(pastRef.current.length > 0);
     setCanRedo(true);
@@ -226,12 +206,15 @@ export function AppShell() {
         tokens: tokensRef.current,
         insertion: insertionRef.current,
         session: sessionHead.current,
+        stamps: stampsRef.current,
       },
     ];
     sessionHead.current = next.session;
     tokensRef.current = next.tokens;
+    stampsRef.current = next.stamps;
     insertionRef.current = next.insertion;
     setTokens(next.tokens);
+    setSlotStamps(next.stamps);
     setActiveInsertion(next.insertion);
     setCanUndo(true);
     setCanRedo(futureRef.current.length > 0);
@@ -328,6 +311,21 @@ export function AppShell() {
   }, [tokens]);
 
   const exportLock = useRef(false);
+  const [exporting, setExporting] = useState(false);
+
+  async function exportProcess() {
+    if (exportLock.current) return;
+    exportLock.current = true;
+    setExporting(true);
+    try {
+      const blob = await exportProcessPng(tokensRef.current);
+      if (!blob) return;
+      downloadBlob(blob, processExportFilename(project.name));
+    } finally {
+      exportLock.current = false;
+      setExporting(false);
+    }
+  }
 
   async function exportSelection() {
     if (exportLock.current || selectedIdsRef.current.length === 0) return;
@@ -363,6 +361,16 @@ export function AppShell() {
     sessionHead.current = false;
     tokensRef.current = next;
     setTokens(next);
+  }
+
+  function placeStamp(slotIndex: string, stampId: OverviewStampId | null) {
+    if (!stampId) return;
+    const next = applySlotStamp(stampsRef.current, slotIndex, stampId);
+    if (next === stampsRef.current) return;
+    remember();
+    sessionHead.current = false;
+    stampsRef.current = next;
+    setSlotStamps(next);
   }
 
   function pickToken(entry: CatalogEntry, keepOpen = false) {
@@ -403,18 +411,32 @@ export function AppShell() {
       }
       style={{ ["--atmosphere" as string]: atmosphere }}
     >
-      <Header details={project} onChange={setProject} />
+      <Header
+        details={project}
+        onChange={setProject}
+        exporting={exporting}
+        onExport={() => {
+          void exportProcess();
+        }}
+      />
       <main className="workspace">
         <Canvas
           viewportRef={viewportRef}
           view={view}
           onPanBy={panBy}
           onZoomBy={zoomBy}
-          onBackgroundClick={selectionEnabled ? clearSelection : undefined}
+          onBackgroundClick={
+            selectionEnabled
+              ? () => {
+                  clearSelection();
+                  setArmedStamp(null);
+                }
+              : undefined
+          }
           boxSelectEnabled={selectionEnabled}
           onBoxSelectMove={updateMarquee}
           onBoxSelectEnd={applyBoxSelection}
-          locked={canvasLocked || reflection.isOpen}
+          locked={canvasLocked}
           atmosphere={atmosphere}
           atmosphereRef={setAtmosphereHost}
         >
@@ -439,6 +461,11 @@ export function AppShell() {
             marqueeRect={selectionEnabled ? marqueeRect : null}
             marqueeAdditive={marqueeAdditive}
             hitTestRef={hitTestRef}
+            tokenAtRef={tokenAtRef}
+            slotStamps={slotStamps}
+            stampTargetId={stampTargetId}
+            stamping={armedStamp != null}
+            onStamp={(tokenId) => placeStamp(tokenId, armedStamp)}
             replaceId={replaceId}
             selectionEnabled={selectionEnabled}
             onSelect={selectToken}
@@ -457,7 +484,22 @@ export function AppShell() {
             atmosphereHost={atmosphereHost}
           />
         </Canvas>
-        <LeftToolbar onReflect={startWholeProcessReflection} />
+        <LeftToolbar />
+        {canvasLocked ? null : (
+          <OverviewToolbar
+            armedId={armedStamp}
+            onArm={setArmedStamp}
+            onDragOver={(clientX, clientY) => {
+              const id = tokenAtRef.current(clientX, clientY);
+              setStampTargetId((current) => (current === id ? current : id));
+            }}
+            onDrop={(stampId, clientX, clientY) => {
+              const id = tokenAtRef.current(clientX, clientY);
+              if (id) placeStamp(id, stampId);
+            }}
+            onDragEnd={() => setStampTargetId(null)}
+          />
+        )}
         <UndoRedo
           canUndo={canUndo}
           canRedo={canRedo}
@@ -470,24 +512,6 @@ export function AppShell() {
           onZoomByPercent={zoomByPercent}
           onResetZoom={resetZoom}
         />
-        {reflection.isOpen ? (
-          <AIReflectionPanel
-            snapshot={reflection.snapshot}
-            onClose={reflection.close}
-            onAnswerChange={reflection.setDraftAnswer}
-            onContinue={() => {
-              if (reflection.snapshot.busy) return;
-              reflection.submitAnswer();
-            }}
-            onRetry={reflection.retryGeneration}
-            onContinueWithoutAi={reflection.continueWithFallback}
-            onBackToProcess={backToProcessFromReflection}
-            onExploreActivities={exploreActivitiesFromReflection}
-            onSave={() => {
-              reflection.saveCurrent();
-            }}
-          />
-        ) : null}
       </main>
     </div>
   );

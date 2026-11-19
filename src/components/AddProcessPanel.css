@@ -1,0 +1,140 @@
+.add-process {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 12px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 420px;
+  max-width: calc(100vw - 40px);
+  padding: 20px;
+  border: 2px solid #ffffff;
+  border-radius: 20px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.96),
+    rgba(255, 255, 255, 0.9)
+  );
+  overflow: hidden;
+  box-shadow: 0 10px 40px -12px rgba(0, 0, 0, 0.07);
+  backdrop-filter: blur(61.35px);
+  -webkit-backdrop-filter: blur(61.35px);
+}
+
+.add-process__art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 200.482px;
+  height: 138.148px;
+  flex-shrink: 0;
+}
+
+.add-process__art-frame {
+  position: relative;
+  width: 200.265px;
+  height: 137.832px;
+  overflow: hidden;
+  transform: rotate(0.09deg);
+}
+
+.add-process__art-image {
+  position: absolute;
+  top: -15.21%;
+  left: -94.43%;
+  width: 285%;
+  height: 285%;
+  max-width: none;
+  pointer-events: none;
+}
+
+.add-process__title {
+  margin: 0;
+  width: 100%;
+  color: #0827e9;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.add-process__copy {
+  width: 100%;
+  color: #374151;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 14px;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.add-process__copy p {
+  margin: 0;
+}
+
+.add-process__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 0;
+}
+
+.add-process__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: 1.5px solid #0827e9;
+  border-radius: 24px;
+  background: #0827e9;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: normal;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  filter: drop-shadow(0 8px 10px rgba(8, 39, 233, 0.2));
+}
+
+.add-process__action img {
+  display: block;
+  flex-shrink: 0;
+}
+
+.add-process__action:hover {
+  filter: drop-shadow(0 8px 10px rgba(8, 39, 233, 0.2)) brightness(1.06);
+}
+
+.add-process__action:active {
+  transform: scale(0.98);
+}
+
+.add-process__file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.add-process__action:focus-visible {
+  outline: 2px solid #0827e9;
+  outline-offset: 3px;
+}
+
+@media (max-width: 520px) {
+  .add-process__actions {
+    flex-wrap: wrap;
+  }
+}

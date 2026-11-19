@@ -19,6 +19,17 @@ export type ProcessToken = {
   turn?: number;
 };
 
+/** Draggable pieces on the process-overview toolbar. */
+export type OverviewStampId =
+  | "groowy"
+  | "checkpoint"
+  | "activity"
+  | "repeat"
+  | "content";
+
+/** Toolbar pieces sitting on the top of a token slot, keyed by token id. */
+export type SlotStamps = Record<string, OverviewStampId>;
+
 export type Point = {
   x: number;
   y: number;

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import gsap from "gsap";
-import type { CanvasView } from "../canvas/view";
+import { screenToWorld, type CanvasView } from "../canvas/view";
 import { EXPLORATION } from "../exploration/explorationConfig";
 import type { ScreenRect as ZoneRect } from "../exploration/cameraFocus";
 import type { ProcessSplit, SplitPose } from "../exploration/processSplit";
@@ -16,10 +16,11 @@ import {
   tokensIntersectingRect,
   type ScreenRect,
 } from "../process/multiSelect";
+import { stampById } from "../process/overviewStamps";
 import { layoutProcess, tokenWorldOutline } from "../process/processLayout";
 import { geometryFor, polygonPoints } from "../process/tokenGeometry";
 import type { CatalogEntry, MenuCategory } from "../process/tokenCatalog";
-import type { PlacedToken, Point, ProcessToken } from "../process/processTypes";
+import type { PlacedToken, Point, ProcessToken, SlotStamps } from "../process/processTypes";
 import { useProcessDrag, type SelectOptions } from "./useProcessDrag";
 import { InsertionMenu } from "./InsertionMenu";
 import { MultiTokenChrome } from "./MultiTokenChrome";
@@ -28,6 +29,8 @@ import { SelectedTokenOutline, TokenChrome } from "./TokenChrome";
 import "./ProcessCanvas.css";
 
 const EMPTY_ZONES: ZoneRect[] = [];
+/** Stamp width relative to the token slot, matching the pieces in Figma 6126:208342. */
+const STAMP_SCALE = 0.62;
 const IDENTITY_SHIFT: SplitPose = { x: 0, y: 0, scale: 1, opacity: 1 };
 /** World padding around the collective multi-selection boundary. */
 const MULTI_BOUNDS_PAD = 14;
@@ -56,8 +59,17 @@ type ProcessCanvasProps = {
   marqueeAdditive: boolean;
   /** Lets the parent resolve box-select hits against current layout. */
   hitTestRef: RefObject<(rect: ScreenRect) => string[]>;
+  /** Slot under a screen point, for drops from the overview toolbar. */
+  tokenAtRef: RefObject<(clientX: number, clientY: number) => string | null>;
+  /** Pieces sitting on slots, keyed by seam index. */
+  slotStamps: SlotStamps;
+  /** Toolbar piece currently hovering a slot. */
+  stampTargetId?: string | null;
+  /** A toolbar piece is selected and the next slot click places it. */
+  stamping?: boolean;
+  onStamp: (slotIndex: string) => void;
   replaceId: string | null;
-  /** When false, exploration or reflection owns the canvas. */
+  /** When false, exploration owns the canvas. */
   selectionEnabled?: boolean;
   onSelect: (id: string, options?: SelectOptions) => void;
   gapOpen: boolean;
@@ -95,6 +107,11 @@ export function ProcessCanvas({
   marqueeRect,
   marqueeAdditive,
   hitTestRef,
+  tokenAtRef,
+  slotStamps,
+  stampTargetId = null,
+  stamping = false,
+  onStamp,
   replaceId,
   selectionEnabled = true,
   onSelect,
@@ -172,6 +189,21 @@ export function ProcessCanvas({
 
   hitTestRef.current = (rect) =>
     tokensIntersectingRect(placed, displayTokens, view, rect);
+  tokenAtRef.current = (clientX, clientY) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return null;
+    const bounds = viewport.getBoundingClientRect();
+    const world = screenToWorld(view, clientX - bounds.left, clientY - bounds.top);
+    for (let index = placed.length - 1; index >= 0; index -= 1) {
+      const item = placed[index];
+      if (hidden.has(item.token.id)) continue;
+      const outline = tokenWorldOutline(item);
+      if (outline.length < 3 || !pointInPolygon(world, outline)) continue;
+      if (item.token.type === "start" && seated) return seated.id;
+      return item.token.id;
+    }
+    return null;
+  };
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const hoverTimer = useRef(0);
   const homeTarget = dragging && activeIndex === sourceIndex;
@@ -274,14 +306,18 @@ export function ProcessCanvas({
                 item.token.type === "start" ? seated?.label : undefined
               }
               onSelect={
-                selectionEnabled && dragId
-                  ? () => onSelect(dragId)
-                  : undefined
+                stamping && (dragId || item.token.type === "start")
+                  ? () => onStamp(dragId ?? item.token.id)
+                  : selectionEnabled && dragId
+                    ? () => onSelect(dragId)
+                    : undefined
               }
               onPress={
-                selectionEnabled && dragId
-                  ? (event) => beginGesture(dragId, event)
-                  : undefined
+                stamping
+                  ? undefined
+                  : selectionEnabled && dragId
+                    ? (event) => beginGesture(dragId, event)
+                    : undefined
               }
               onHover={
                 selectionEnabled && dragId
@@ -293,6 +329,12 @@ export function ProcessCanvas({
                   ? () => hideHover(dragId)
                   : undefined
               }
+            />
+            <SlotStamp
+              ownerId={dragId ?? item.token.id}
+              outline={tokenWorldOutline(item)}
+              slotStamps={slotStamps}
+              hot={stampTargetId === (dragId ?? (item.token.type === "start" ? item.token.id : null))}
             />
           </div>
         );
@@ -324,6 +366,12 @@ export function ProcessCanvas({
             return (
               <div key={id} className="drag-floater">
                 <ProcessTokenView placed={placedFromPose(token, pose)} floating />
+                <SlotStamp
+                  ownerId={id}
+                  outline={tokenWorldOutline(placedFromPose(token, pose))}
+                  slotStamps={slotStamps}
+                  hot={false}
+                />
               </div>
             );
           })
@@ -500,6 +548,82 @@ function seatedToken(tokens: ProcessToken[]): ProcessToken | null {
     .sort((a, b) => a.order - b.order)[0];
   if (!first || !geometryFor(first).outline) return null;
   return first;
+}
+
+function SlotStamp({
+  ownerId,
+  outline,
+  slotStamps,
+  hot,
+}: {
+  ownerId: string;
+  outline: Point[];
+  slotStamps: SlotStamps;
+  hot: boolean;
+}) {
+  const pieceId = slotStamps[ownerId];
+  if ((!pieceId && !hot) || outline.length < 3) return null;
+  const seat = topOfSlot(outline);
+  const piece = pieceId ? stampById(pieceId) : null;
+  const span = slotSpan(outline);
+  const width = piece ? span * STAMP_SCALE : 0;
+  const height = piece ? width * (piece.height / piece.width) : 0;
+  return (
+    <>
+      {hot ? (
+        <div
+          className="slot-stamp-hit slot-stamp-hit--hot"
+          style={{ left: seat.x, top: seat.y, width: span * STAMP_SCALE, height: span * STAMP_SCALE }}
+        />
+      ) : null}
+      {piece ? (
+        <img
+          className="slot-stamp"
+          src={`/tokens/${piece.asset}`}
+          alt=""
+          width={Math.round(width)}
+          height={Math.round(height)}
+          draggable={false}
+          style={{ left: seat.x, top: seat.y, width, height }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** Highest point of the slot, where a piece rests on top of the token. */
+function topOfSlot(points: readonly Point[]): Point {
+  const top = Math.min(...points.map((point) => point.y));
+  const edge = points.filter((point) => point.y <= top + 8);
+  const used = edge.length > 0 ? edge : points;
+  return {
+    x: used.reduce((sum, point) => sum + point.x, 0) / used.length,
+    y: top,
+  };
+}
+
+function slotSpan(points: readonly Point[]): number {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    maxX = Math.max(maxX, point.x);
+  }
+  return Math.max(36, maxX - minX);
+}
+
+function pointInPolygon(point: Point, polygon: readonly Point[]): boolean {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const current = polygon[index];
+    const prior = polygon[previous];
+    const crosses =
+      current.y > point.y !== prior.y > point.y &&
+      point.x <
+        ((prior.x - current.x) * (point.y - current.y)) / (prior.y - current.y) + current.x;
+    if (crosses) inside = !inside;
+  }
+  return inside;
 }
 
 function centroidOf(points: readonly Point[]): Point {
